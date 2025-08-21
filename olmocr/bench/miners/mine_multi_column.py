@@ -359,7 +359,7 @@ def main():
     print(f"Found {len(pdf_paths)} PDF files in {args.input_dir}")
 
     random.shuffle(pdf_paths)
-    pdf_paths = pdf_paths[: args.max_tests]
+    pdf_paths = pdf_paths[:args.max_tests]
 
     synthetic_json_path = os.path.join(args.output_dir, "synthetic.jsonl")
     open(synthetic_json_path, "w").close()
@@ -371,6 +371,36 @@ def main():
     import threading
 
     file_lock = threading.Lock()
+
+    with ThreadPoolExecutor(max_workers=args.parallel) as executor:
+        futures = {executor.submit(process_pdf, (pdf_path, i), args, client): pdf_path for i, pdf_path in enumerate(pdf_paths)}
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing PDFs"):
+            pdf_path = futures[future]
+            try:
+                result = future.result()
+                if result and result.get("tests"):
+                    results.append(result)
+                    with file_lock:
+                        with open(synthetic_json_path, "a") as f:
+                            for test in result["tests"]:
+                                f.write(json.dumps(test) + "\n")
+                        test_counter += len(result["tests"])
+                        for test in result["tests"]:
+                            if test.get("type") == "order":
+                                test_types["order"] += 1
+                        print(f"Added {len(result['tests'])} tests from {result['pdf_id']}, total: {test_counter}")
+            except Exception as e:
+                print(f"Error processing {pdf_path}: {e}")
+
+    print(f"Generated {len(results)} HTML templates")
+    if not args.skip_playwright:
+        playwright_success = sum(1 for r in results if r and r.get("playwright_pdf_path"))
+        print(f"Playwright PDF rendering: {playwright_success}/{len(results)} successful")
+    print(f"Saved {test_counter} tests to {synthetic_json_path}")
+    print(f"Generated a total of {test_counter} tests across {len(results)} templates")
+    print("Test type distribution:")
+    for test_type, count in test_types.items():
+        print(f"  - {test_type}: {count} tests")
 
     with ThreadPoolExecutor(max_workers=args.parallel) as executor:
         futures = {executor.submit(process_pdf, (pdf_path, i), args, client): pdf_path for i, pdf_path in enumerate(pdf_paths)}

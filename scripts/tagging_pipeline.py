@@ -96,7 +96,13 @@ async def _process_single_page(page_text: str) -> PIIClassification:
         ],
         "max_tokens": 100,
         "temperature": 0.0,
-        "response_format": {"type": "json_schema", "json_schema": {"name": "PIIClassification", "schema": PIIClassification.model_json_schema()}},
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "PIIClassification",
+                "schema": PIIClassification.model_json_schema(),
+            },
+        },
     }
 
     url = f"http://localhost:{SERVER_PORT}/v1/chat/completions"
@@ -496,9 +502,13 @@ async def server_host(model_name_or_path, args, semaphore):
         retry += 1
 
     if retry >= MAX_RETRIES:
-        logger.error(f"Ended up starting the server more than {retry} times, cancelling pipeline")
+        logger.error(
+            f"Ended up starting the server more than {retry} times, cancelling pipeline"
+        )
         logger.error("")
-        logger.error("Please make sure vllm is installed according to the latest instructions for 0.8.4")
+        logger.error(
+            "Please make sure vllm is installed according to the latest instructions for 0.8.4"
+        )
         sys.exit(1)
 
 
@@ -516,9 +526,13 @@ async def check_server_ready():
                     logger.info("server is ready.")
                     return
                 else:
-                    logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
+                    logger.info(
+                        f"Attempt {attempt}: Unexpected status code {response.status_code}"
+                    )
         except Exception:
-            logger.warning(f"Attempt {attempt}: Please wait for model server to become ready...")
+            logger.warning(
+                f"Attempt {attempt}: Please wait for model server to become ready..."
+            )
 
         await asyncio.sleep(delay_sec)
 
@@ -526,9 +540,15 @@ async def check_server_ready():
 
 
 async def download_model(model_name_or_path: str):
-    if model_name_or_path.startswith("s3://") or model_name_or_path.startswith("gs://") or model_name_or_path.startswith("weka://"):
+    if (
+        model_name_or_path.startswith("s3://")
+        or model_name_or_path.startswith("gs://")
+        or model_name_or_path.startswith("weka://")
+    ):
         logger.info(f"Downloading model directory from '{model_name_or_path}'")
-        model_cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "olmocr", "model")
+        model_cache_dir = os.path.join(
+            os.path.expanduser("~"), ".cache", "olmocr", "model"
+        )
         download_directory([model_name_or_path], model_cache_dir)
         return model_cache_dir
     elif os.path.isabs(model_name_or_path) and os.path.isdir(model_name_or_path):
@@ -574,7 +594,11 @@ def submit_beaker_job(args):
     args_list = [arg for arg in sys.argv[1:] if arg != "--beaker"]
 
     # Take out the --pdfs [arg] or --pdfs=[arg], since the queue is populated locally
-    args_list = [arg for i, arg in enumerate(args_list) if not (arg.startswith("--pdfs") or (i > 0 and args_list[i - 1] == "--pdfs"))]
+    args_list = [
+        arg
+        for i, arg in enumerate(args_list)
+        if not (arg.startswith("--pdfs") or (i > 0 and args_list[i - 1] == "--pdfs"))
+    ]
 
     try:
         b.secret.get(f"{owner}-WEKA_ACCESS_KEY_ID", args.beaker_workspace)
@@ -589,8 +613,16 @@ def submit_beaker_job(args):
             print("Exiting...")
             sys.exit(1)
 
-        b.secret.write(f"{owner}-WEKA_ACCESS_KEY_ID", os.environ.get("WEKA_ACCESS_KEY_ID", ""), args.beaker_workspace)
-        b.secret.write(f"{owner}-WEKA_SECRET_ACCESS_KEY", os.environ.get("WEKA_SECRET_ACCESS_KEY", ""), args.beaker_workspace)
+        b.secret.write(
+            f"{owner}-WEKA_ACCESS_KEY_ID",
+            os.environ.get("WEKA_ACCESS_KEY_ID", ""),
+            args.beaker_workspace,
+        )
+        b.secret.write(
+            f"{owner}-WEKA_SECRET_ACCESS_KEY",
+            os.environ.get("WEKA_SECRET_ACCESS_KEY", ""),
+            args.beaker_workspace,
+        )
         b.secret.write(
             f"{owner}-AWS_CREDENTIALS_FILE",
             open(os.path.join(os.path.expanduser("~"), ".aws", "credentials")).read(),
@@ -611,9 +643,13 @@ def submit_beaker_job(args):
 
     try:
         b.secret.get("OE_DATA_GCS_SA_KEY", args.beaker_workspace)
-        env_var_secrets.append(EnvVar(name="GOOGLE_APPLICATION_CREDENTIALS_FILE", secret="OE_DATA_GCS_SA_KEY"))
+        env_var_secrets.append(
+            EnvVar(name="GOOGLE_APPLICATION_CREDENTIALS_FILE", secret="OE_DATA_GCS_SA_KEY")
+        )
     except SecretNotFound:
-        print("Input the olmo-gcs SA key if you would like to load weights from gcs (end with a double newline):")
+        print(
+            "Input the olmo-gcs SA key if you would like to load weights from gcs (end with a double newline):"
+        )
         lines = []
         prev_empty = False
         for line in iter(input, None):
@@ -624,7 +660,9 @@ def submit_beaker_job(args):
         gcs_sa_key = "\n".join(lines[:-1]).strip()  # Remove the last empty line
         if gcs_sa_key:
             b.secret.write("OE_DATA_GCS_SA_KEY", gcs_sa_key, args.beaker_workspace)
-            env_var_secrets.append(EnvVar(name="GOOGLE_APPLICATION_CREDENTIALS_FILE", secret="OE_DATA_GCS_SA_KEY"))
+            env_var_secrets.append(
+                EnvVar(name="GOOGLE_APPLICATION_CREDENTIALS_FILE", secret="OE_DATA_GCS_SA_KEY")
+            )
 
     # Create the experiment spec
     experiment_spec = ExperimentSpec(
@@ -642,22 +680,36 @@ def submit_beaker_job(args):
                 ),
                 image=ImageSource(beaker=beaker_image),
                 command=["python", "scripts/tagging_pipeline.py"] + args_list,
-                env_vars=[EnvVar(name="BEAKER_JOB_NAME", value=task_name), EnvVar(name="OWNER", value=owner)] + env_var_secrets,
+                env_vars=[
+                    EnvVar(name="BEAKER_JOB_NAME", value=task_name),
+                    EnvVar(name="OWNER", value=owner),
+                ]
+                + env_var_secrets,
                 resources=TaskResources(gpu_count=1),
-                constraints=Constraints(cluster=args.beaker_cluster if isinstance(args.beaker_cluster, list) else [args.beaker_cluster]),
+                constraints=Constraints(
+                    cluster=args.beaker_cluster
+                    if isinstance(args.beaker_cluster, list)
+                    else [args.beaker_cluster]
+                ),
                 result=ResultSpec(path="/noop-results"),
             )
         ],
     )
 
-    experiment_data = b.experiment.create(spec=experiment_spec, workspace=args.beaker_workspace)
+    experiment_data = b.experiment.create(
+        spec=experiment_spec, workspace=args.beaker_workspace
+    )
 
     print(f"Experiment URL: https://beaker.org/ex/{experiment_data.id}")
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Tagging pipeline for Dolma JSONL dataset")
-    parser.add_argument("dataset", help="Dolma dataset root (local or s3://) with documents/ folder")
+    parser = argparse.ArgumentParser(
+        description="Tagging pipeline for Dolma JSONL dataset"
+    )
+    parser.add_argument(
+        "dataset", help="Dolma dataset root (local or s3://) with documents/ folder"
+    )
     parser.add_argument("scratch", help="Scratch workspace (local dir or s3://)")
     parser.add_argument("--workers", type=int, default=4, help="Number of concurrent workers")
     parser.add_argument("--parallel_requests", type=int, default=800, help="Max number of parallel requests to send to model")

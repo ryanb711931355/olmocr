@@ -414,7 +414,7 @@ def generate_tests_from_html(html_content: str, pdf_id: str, page_num: int, verb
                 if text:
                     text_elements.append(text)
 
-        # If no elements found, use the parent's text as a fallback, but only if
+        # If no elements found, use the parent's text as a fallback, but only if it's not empty
         if not text_elements:
             parent_text = mini_soup.get_text().strip()
             if parent_text:
@@ -434,8 +434,9 @@ def generate_tests_from_html(html_content: str, pdf_id: str, page_num: int, verb
                         "type": TestType.ABSENT.value,
                         "text": text,
                         "max_diffs": round(len(text) * 0.05),
-                    }
+                    },
                 )
+
 
     # Create TextAbsenceTests for headers
     for header in headers:
@@ -461,8 +462,9 @@ def generate_tests_from_html(html_content: str, pdf_id: str, page_num: int, verb
                     "type": TestType.ABSENT.value,
                     "text": page_number_text,
                     "max_diffs": 0,
-                }
+                },
             )
+
 
     # Step 2: Generate tests from tables using parse_html_tables
     # Convert superscripts and subscripts to Unicode equivalents in tables
@@ -516,6 +518,7 @@ def generate_tests_from_html(html_content: str, pdf_id: str, page_num: int, verb
                 "cell": cell_text,
                 "max_diffs": 0,
             }
+
 
             # Check cell up
             if row_idx > 0:
@@ -582,6 +585,7 @@ def generate_tests_from_html(html_content: str, pdf_id: str, page_num: int, verb
                     top_heading=test_data.get("top_heading", ""),
                     left_heading=test_data.get("left_heading", ""),
                 )
+
 
                 # Extract just the relevant table HTML
                 tables = soup.find_all("table")
@@ -661,8 +665,9 @@ def generate_tests_from_html(html_content: str, pdf_id: str, page_num: int, verb
                 "before": first_sentence,
                 "after": second_sentence,
                 "max_diffs": max_diffs,
-            }
+            },
         )
+
         num_order_tests += 1
 
         if num_order_tests > 5:
@@ -889,12 +894,12 @@ def main():
             if not line:
                 continue
 
-            if i < 100000:
+            if i < 100_000:
                 s3_paths.append(line)
             else:
                 # Randomly replace elements with decreasing probability
                 j = random.randint(0, i)
-                if j < 100000:
+                if j < 100_000:
                     s3_paths[j] = line
 
     print(f"Found {len(s3_paths)} PDF paths in input list")
@@ -902,6 +907,7 @@ def main():
     # Shuffle and limit to max_tests
     random.shuffle(s3_paths)
     s3_paths = s3_paths[: args.max_tests]
+
 
     # Initialize synthetic.json as a JSONL file (empty initially)
     synthetic_json_path = os.path.join(args.output_dir, "synthetic.jsonl")
@@ -920,7 +926,10 @@ def main():
     # Process PDFs in parallel
     with ThreadPoolExecutor(max_workers=args.parallel) as executor:
         # Submit all tasks
-        futures = {executor.submit(process_pdf, (s3_path, i), args, client): s3_path for i, s3_path in enumerate(s3_paths)}
+        futures = {
+            executor.submit(process_pdf, (s3_path, i), args, client): s3_path for i, s3_path in enumerate(s3_paths)
+        }
+
 
         # Process results as they complete
         for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing PDFs"):

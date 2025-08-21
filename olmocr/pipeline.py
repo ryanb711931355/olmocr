@@ -821,7 +821,11 @@ def submit_beaker_job(args):
     args_list = [arg for arg in sys.argv[1:] if arg != "--beaker"]
 
     # Take out the --pdfs [arg] or --pdfs=[arg], since the queue is populated locally
-    args_list = [arg for i, arg in enumerate(args_list) if not (arg.startswith("--pdfs") or (i > 0 and args_list[i - 1] == "--pdfs"))]
+    args_list = [
+        arg
+        for i, arg in enumerate(args_list)
+        if not (arg.startswith("--pdfs") or (i > 0 and args_list[i - 1] == "--pdfs"))
+    ]
 
     try:
         b.secret.get(f"{owner}-WEKA_ACCESS_KEY_ID", args.beaker_workspace)
@@ -891,7 +895,9 @@ def submit_beaker_job(args):
                 command=["python", "-m", "olmocr.pipeline"] + args_list,
                 env_vars=[EnvVar(name="BEAKER_JOB_NAME", value=task_name), EnvVar(name="OWNER", value=owner)] + env_var_secrets,
                 resources=TaskResources(gpu_count=1),
-                constraints=Constraints(cluster=args.beaker_cluster if isinstance(args.beaker_cluster, list) else [args.beaker_cluster]),
+                constraints=Constraints(
+                    cluster=args.beaker_cluster if isinstance(args.beaker_cluster, list) else [args.beaker_cluster]
+                ),
                 result=ResultSpec(path="/noop-results"),
             )
         ],
@@ -997,7 +1003,16 @@ def print_stats(args, root_work_queue):
         futures = {executor.submit(process_output_file, item): item for item in done_work_items}
 
         for future in tqdm(as_completed(futures), total=len(futures)):
-            (doc_count, input_tokens, output_tokens, pages, fallback_pages, processed_paths, long_context_docs, long_context_tokens) = future.result()
+            (
+                doc_count,
+                input_tokens,
+                output_tokens,
+                pages,
+                fallback_pages,
+                processed_paths,
+                long_context_docs,
+                long_context_tokens,
+            ) = future.result()
             docs_total += doc_count
             input_tokens_total += input_tokens
             output_tokens_total += output_tokens
@@ -1304,7 +1319,9 @@ async def main():
             cumulative += count
             percentage = (count / total_finished * 100) if total_finished > 0 else 0
             cumulative_percentage = (cumulative / total_finished * 100) if total_finished > 0 else 0
-            logger.info(f"  Attempt {i}: {count:,} pages ({percentage:.1f}%) - Cumulative: {cumulative:,} ({cumulative_percentage:.1f}%)")
+            logger.info(
+                f"  Attempt {i}: {count:,} pages ({percentage:.1f}%) - Cumulative: {cumulative:,} ({cumulative_percentage:.1f}%)"
+            )
 
     # Output rates
     if "server_input_tokens_per_sec" in rates:
