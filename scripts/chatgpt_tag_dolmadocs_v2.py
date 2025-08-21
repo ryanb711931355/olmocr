@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Document Classification for Dolma Documents with ChatGPT Vision
 
@@ -7,6 +6,7 @@ This script uses ChatGPT Vision API to classify PDF documents into various categ
 2. Classifies documents into categories like academic papers, textbooks, news articles, etc.
 3. Creates attribute folders mirroring the document structure with classification results
 """
+
 import argparse
 import gzip
 import json
@@ -16,7 +16,6 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
 
 import boto3
 import pydantic
@@ -99,7 +98,7 @@ class DocumentClassification(pydantic.BaseModel):
     classification_notes: str
 
     @property
-    def get_document_types(self) -> List[str]:
+    def get_document_types(self) -> list[str]:
         """Get a list of all document types identified"""
         doc_types = []
 
@@ -199,7 +198,7 @@ def load_document_file(s3_client, file_path):
 
         # Return the decoded lines
         return file_bytes.decode("utf-8").strip().split("\n")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"Error loading file {file_path}: {e}")
         return []
 
@@ -251,7 +250,7 @@ def get_document_info_from_line(line, file_path, line_index):
     except json.JSONDecodeError:
         logger.warning(f"Invalid JSON in {file_path} line {line_index}")
         return None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Error processing document in {file_path} line {line_index}: {e}")
         return None
 
@@ -282,7 +281,7 @@ def get_all_pages(s3_client, document_files):
     return file_contents
 
 
-def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api_key: str, openai_model: str) -> Optional[DocumentClassification]:
+def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api_key: str, openai_model: str) -> DocumentClassification | None:
     """Analyze a page using the ChatGPT vision model with structured outputs for document classification."""
     try:
         # Download PDF to temp file and render to image
@@ -348,7 +347,7 @@ Only classify the document based on what you can observe in the provided image, 
 
         return completion.choices[0].message.parsed
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"Error analyzing page {pdf_path} (page {page_num}): {e}")
         return None
 
@@ -499,7 +498,7 @@ def write_attribute_file(args, processed_docs, file_documents, workspace_s3):
                     fh.write(payload)
                 logger.info(f"Wrote {len(file_entries)} attribute entries to {out_path}")
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error(f"Error writing attributes for {source_file}: {e}")
             continue
 
@@ -598,7 +597,7 @@ def main():
                     try:
                         result = future.result()
                         results.append(result)
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         logger.error(f"Error processing document: {e}")
 
             # Save results for this batch

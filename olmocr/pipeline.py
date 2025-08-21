@@ -199,22 +199,20 @@ async def apost(url, json_data):
             raise ConnectionError("Anything other than fixed content length responses are not implemented yet")
 
         return status_code, response_body
-    except Exception as e:
-        # Pass through errors
-        raise e
     finally:
         # But just make sure to close the socket on your way out
         if writer is not None:
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
-                pass
+            except (OSError, RuntimeError) as close_err:
+                logger.debug(f"Ignoring error while closing connection to {host}:{port}: {close_err}")
 
 
 async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path: str, page_num: int) -> PageResult:
-    if args.server:
-        COMPLETION_URL = f"{args.server.rstrip('/')}/v1/chat/completions"
+    server = getattr(args, "server", None)
+    if server:
+        COMPLETION_URL = f"{server.rstrip('/')}/v1/chat/completions"
     else:
         COMPLETION_URL = f"http://localhost:{BASE_SERVER_PORT}/v1/chat/completions"
     MAX_RETRIES = args.max_page_retries
@@ -413,6 +411,21 @@ async def process_pdf(args, worker_id: int, pdf_orig_path: str):
             os.unlink(tf.name)
 
 
+def _write_text_file(path: str, text: str) -> None:
+    with open(path, "w") as f:
+        f.write(text)
+
+
+def _read_file_header(path: str, num_bytes: int) -> bytes:
+    with open(path, "rb") as f:
+        return f.read(num_bytes)
+
+
+def _read_path_list(path: str) -> set:
+    with open(path, "r") as f:
+        return set(filter(None, (line.strip() for line in f)))
+
+
 def build_dolma_document(pdf_orig_path, page_results):
     # Build the document text and page spans
     document_text = ""
@@ -450,8 +463,8 @@ def build_dolma_document(pdf_orig_path, page_results):
         "id": id_,
         "text": document_text,
         "source": "olmocr",
-        "added": datetime.datetime.now().strftime("%Y-%m-%d"),
-        "created": datetime.datetime.now().strftime("%Y-%m-%d"),
+        "added": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"),
+        "created": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d"),
         "metadata": metadata,
         "attributes": {
             "pdf_page_numbers": pdf_page_spans,
@@ -491,9 +504,10 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
             for task in dolma_tasks:
                 try:
                     result = task.result()
-                except:
+                except Exception:
                     # some dolma doc creations may have failed
-                    pass
+                    logger.exception(f"Failed to build dolma document for work item {work_item.hash}")
+                    continue
 
                 if result is not None:
                     dolma_docs.append(result)
@@ -567,8 +581,7 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
                     else:
                         # For local paths, create the directory structure and write the file
                         os.makedirs(markdown_dir, exist_ok=True)
-                        with open(markdown_path, "w") as md_f:
-                            md_f.write(natural_text)
+                        await asyncio.to_thread(_write_text_file, markdown_path, natural_text)
 
             # Update finished token counts from successful documents
             metrics.add_metrics(
@@ -669,7 +682,7 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
             try:
                 line = line.decode("utf-8").rstrip()
                 await process_line(line)
-            except Exception as ex:
+            except Exception as ex:  # noqa: BLE001 - a bad log line must never stop the log reader
                 logger.warning(f"Got {ex} when reading log line from inference server, skipping")
 
     async def timeout_task():
@@ -751,12 +764,12 @@ async def vllm_server_ready(args):
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
+        except (httpx.HTTPError, OSError, asyncio.TimeoutError):
             logger.warning(f"Attempt {attempt}: Please wait for vllm server to become ready...")
 
         await asyncio.sleep(delay_sec)
 
-    raise Exception("vllm server did not become ready after waiting.")
+    raise RuntimeError("vllm server did not become ready after waiting.")
 
 
 async def download_model(model_name_or_path: str, max_retries: int = 5):
@@ -838,11 +851,9 @@ def submit_beaker_job(args):
 
         b.secret.write(f"{owner}-WEKA_ACCESS_KEY_ID", os.environ.get("WEKA_ACCESS_KEY_ID", ""), args.beaker_workspace)
         b.secret.write(f"{owner}-WEKA_SECRET_ACCESS_KEY", os.environ.get("WEKA_SECRET_ACCESS_KEY", ""), args.beaker_workspace)
-        b.secret.write(
-            f"{owner}-AWS_CREDENTIALS_FILE",
-            open(os.path.join(os.path.expanduser("~"), ".aws", "credentials")).read(),
-            args.beaker_workspace,
-        )
+        with open(os.path.join(os.path.expanduser("~"), ".aws", "credentials")) as cred_file:
+            aws_credentials = cred_file.read()
+        b.secret.write(f"{owner}-AWS_CREDENTIALS_FILE", aws_credentials, args.beaker_workspace)
 
     env_var_secrets = [
         EnvVar(name="WEKA_ACCESS_KEY_ID", secret=f"{owner}-WEKA_ACCESS_KEY_ID"),
@@ -968,7 +979,7 @@ def print_stats(args, root_work_queue):
                 long_context_docs,
                 long_context_tokens,
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - one unreadable output file should not abort the stats report
             logger.warning(f"Error processing {s3_path}: {e}")
             return 0, 0, 0, 0, 0, set(), 0, 0
 
@@ -1076,7 +1087,9 @@ async def main():
     vllm_group.add_argument("--data-parallel-size", "-dp", type=int, default=1, help="Data parallel size for vLLM")
     vllm_group.add_argument("--port", type=int, default=30024, help="Port to use for the VLLM server")
     vllm_group.add_argument(
-        "--server", type=str, help="URL of external vLLM (or other compatible provider) server (e.g., http://hostname:port). If provided, skips spawning local vLLM instance"
+        "--server",
+        type=str,
+        help="URL of external vLLM (or other compatible provider) server (e.g., http://hostname:port). If provided, skips spawning local vLLM instance",
     )
 
     # Beaker/job running stuff
@@ -1106,12 +1119,10 @@ async def main():
     if "BEAKER_JOB_NAME" in os.environ:
         cred_path = os.path.join(os.path.expanduser("~"), ".aws", "credentials")
         os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-        with open(cred_path, "w") as f:
-            f.write(os.environ.get("AWS_CREDENTIALS_FILE"))
+        await asyncio.to_thread(_write_text_file, cred_path, os.environ.get("AWS_CREDENTIALS_FILE"))
         cred_path = os.path.join(os.path.expanduser("~"), ".gcs", "credentials")
         os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-        with open(cred_path, "w") as f:
-            f.write(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE"))
+        await asyncio.to_thread(_write_text_file, cred_path, os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE"))
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
         workspace_s3 = boto3.client("s3")
         pdf_s3 = boto3.client("s3")
@@ -1156,7 +1167,7 @@ async def main():
                     or pdf_path.lower().endswith(".jpg")
                     or pdf_path.lower().endswith(".jpeg")
                 ):
-                    if open(pdf_path, "rb").read(4) == b"%PDF":
+                    if await asyncio.to_thread(_read_file_header, pdf_path, 4) == b"%PDF":
                         logger.info(f"Loading file at {pdf_path} as PDF document")
                         pdf_work_paths.add(pdf_path)
                     elif is_png(pdf_path) or is_jpeg(pdf_path):
@@ -1166,8 +1177,7 @@ async def main():
                         logger.warning(f"File at {pdf_path} is not a valid PDF")
                 elif pdf_path.lower().endswith(".txt"):
                     logger.info(f"Loading file at {pdf_path} as list of paths")
-                    with open(pdf_path, "r") as f:
-                        pdf_work_paths |= set(filter(None, (line.strip() for line in f)))
+                    pdf_work_paths |= await asyncio.to_thread(_read_path_list, pdf_path)
                 else:
                     raise ValueError(f"Unsupported file extension for {pdf_path}")
             else:
@@ -1191,7 +1201,7 @@ async def main():
                     else:
                         reader = PdfReader(tmp_file.name)
                         page_counts.append(len(reader.pages))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - sampling is best-effort, any unreadable file is skipped
                 logger.warning(f"Failed to read {pdf}: {e}")
 
         if page_counts:
