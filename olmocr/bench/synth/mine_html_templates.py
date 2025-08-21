@@ -808,7 +808,9 @@ def process_pdf(pdf_info, args, client):
                 png_width, png_height = get_png_dimensions_from_base64(image_base64)
 
                 # Run the async function in the synchronous context
-                render_success = asyncio.run(render_pdf_with_playwright(html_content, playwright_pdf_path, png_width, png_height))
+                render_success = asyncio.run(
+                    render_pdf_with_playwright(html_content, playwright_pdf_path, png_width, png_height)
+                )
 
                 if render_success:
                     print(f"Successfully rendered with Playwright: {playwright_pdf_path}")
@@ -857,15 +859,21 @@ def process_pdf(pdf_info, args, client):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Convert PDFs to HTML templates and render with Playwright")
+    parser = argparse.ArgumentParser(
+        description="Convert PDFs to HTML templates and render with Playwright"
+    )
     parser.add_argument("--input_list", required=True, help="Path to a file containing S3 paths to PDFs")
     parser.add_argument("--output_dir", required=True, help="Directory to store extracted pages and tests")
     parser.add_argument("--temp_dir", default="/tmp/mine_tables", help="Directory for temporary files")
     parser.add_argument("--max_tests", type=int, default=100, help="Maximum number of tests to generate")
     parser.add_argument("--parallel", type=int, default=1, help="Number of parallel threads to use")
-    parser.add_argument("--api_key", help="Claude API key (or set ANTHROPIC_API_KEY environment variable)")
+    parser.add_argument(
+        "--api_key", help="Claude API key (or set ANTHROPIC_API_KEY environment variable)"
+    )
     parser.add_argument("--skip_playwright", action="store_true", help="Skip Playwright PDF rendering")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose output including table test verification")
+    parser.add_argument(
+        "--verbose", action="store_true", help="Enable verbose output including table test verification"
+    )
     args = parser.parse_args()
 
     # Ensure output and temp directories exist
@@ -920,10 +928,15 @@ def main():
     # Process PDFs in parallel
     with ThreadPoolExecutor(max_workers=args.parallel) as executor:
         # Submit all tasks
-        futures = {executor.submit(process_pdf, (s3_path, i), args, client): s3_path for i, s3_path in enumerate(s3_paths)}
+        futures = {
+            executor.submit(process_pdf, (s3_path, i), args, client): s3_path
+            for i, s3_path in enumerate(s3_paths)
+        }
 
         # Process results as they complete
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing PDFs"):
+        for future in tqdm(
+            concurrent.futures.as_completed(futures), total=len(futures), desc="Processing PDFs"
+        ):
             s3_path = futures[future]
             try:
                 result = future.result()

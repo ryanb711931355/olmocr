@@ -253,13 +253,12 @@ def get_document_info_from_line(line, file_path, line_index):
             return None
 
         # Just use the first page for each document
-        if page_spans:
-            page_span = page_spans[0]  # Just get the first page
-            if len(page_span) >= 3:
-                # Page spans are [start_pos, end_pos, page_num]
-                page_num = page_span[2]
+        page_span = page_spans[0]  # Just get the first page
+        if len(page_span) >= 3:
+            # Page spans are [start_pos, end_pos, page_num]
+            page_num = page_span[2]
 
-                # Extract text for this page
+            # Extract text for this page
                 start_pos, end_pos = page_span[0], page_span[1]
                 page_text = doc["text"][start_pos:end_pos].strip()
 
@@ -330,8 +329,7 @@ def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api
         client = OpenAI(api_key=openai_api_key)
 
         # Prepare the user message with all instructions - Keep exact prompt from autoscan_dolmadocs.py
-        user_message = """
-You are a document analyzer that identifies Personally Identifiable Information (PII) in documents. 
+        user_message = """You are a document analyzer that identifies Personally Identifiable Information (PII) in documents. 
 Your task is to analyze the provided document image and determine:
 1. Whether the document is intended for public release or dissemination (e.g., research paper, public report, etc.)
 2. If the document contains any PII
@@ -371,7 +369,13 @@ Only consider actual occurrences of the PII within the document shown.
             messages=[
                 {
                     "role": "user",
-                    "content": [{"type": "text", "text": user_message}, {"type": "image_url", "image_url": {"url": f"data:image/webp;base64,{base64_image}"}}],
+                    "content": [
+                        {"type": "text", "text": user_message},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/webp;base64,{base64_image}"},
+                        },
+                    ],
                 }
             ],
             response_format=PIIAnnotation,

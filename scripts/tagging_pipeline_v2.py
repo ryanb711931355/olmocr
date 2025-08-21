@@ -260,7 +260,9 @@ async def process_dolma_document(args, dolma_doc, sem):
     if "attributes" in dolma_doc and "pdf_page_numbers" in dolma_doc["attributes"]:
         page_numbers = dolma_doc["attributes"]["pdf_page_numbers"]
 
-        logger.info(f"Document {doc_id} has {len(page_numbers)} pages, processing first 5000 characters")
+        logger.info(
+            f"Document {doc_id} has {len(page_numbers)} pages, processing first 5000 characters"
+        )
 
         # Take first 5000 characters of the document
         sample_text = text[:5000]
@@ -285,7 +287,9 @@ async def process_dolma_document(args, dolma_doc, sem):
 
         return result_attributes
     else:
-        raise NotImplementedError("Missing code here, expecting this to be dolma docs made by olmocr....")
+        raise NotImplementedError(
+            "Missing code here, expecting this to be dolma docs made by olmocr...."
+        )
 
 
 async def process_file(args, worker_id: int, file_uri: str):
@@ -302,7 +306,7 @@ async def process_file(args, worker_id: int, file_uri: str):
     # Decompress if needed
     if file_uri.endswith(".gz"):
         file_bytes = gzip.decompress(raw)
-    elif file_uri.endswith(".ztd") or file_uri.endswith(".zst") or file_uri.endswith(".zstd"):
+    elif file_uri.endswith((".ztd", ".zst", ".zstd")):
         dctx = zstd.ZstdDecompressor()
         file_bytes = dctx.decompress(raw, max_output_size=1_000_000_000)
     else:
@@ -477,7 +481,12 @@ async def server_task(model_name_or_path, args, semaphore):
         try:
             while True:
                 await asyncio.sleep(1)
-                if server_printed_ready_message and last_queue_req == 0 and time.time() - last_semaphore_release > 30 and semaphore.locked():
+                if (
+                    server_printed_ready_message
+                    and last_queue_req == 0
+                    and time.time() - last_semaphore_release > 30
+                    and semaphore.locked()
+                ):
                     semaphore.release()
                     last_semaphore_release = time.time()
                     logger.info("Semaphore released, allowing a worker to proceed.")

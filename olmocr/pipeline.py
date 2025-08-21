@@ -248,16 +248,22 @@ async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path:
             status_code, response_body = await apost(COMPLETION_URL, json_data=query)
 
             if status_code == 400:
-                raise ValueError(f"Got BadRequestError from server: {response_body}, skipping this response")
+                raise ValueError(
+                    f"Got BadRequestError from server: {response_body}, skipping this response"
+                )
             elif status_code == 500:
-                raise ValueError(f"Got InternalServerError from server: {response_body}, skipping this response")
+                raise ValueError(
+                    f"Got InternalServerError from server: {response_body}, skipping this response"
+                )
             elif status_code != 200:
                 raise ValueError(f"Error http status {status_code}")
 
             base_response_data = json.loads(response_body)
 
             if base_response_data["usage"]["total_tokens"] > MODEL_MAX_CONTEXT:
-                raise ValueError(f"Response exceeded model_max_context of {MODEL_MAX_CONTEXT}, cannot use this response")
+                raise ValueError(
+                    f"Response exceeded model_max_context of {MODEL_MAX_CONTEXT}, cannot use this response"
+                )
 
             if base_response_data["choices"][0]["finish_reason"] != "stop":
                 raise ValueError("Response did not finish with reason code 'stop', cannot use this response")
@@ -280,7 +286,9 @@ async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path:
                 # Add the rotation correction to the cumulative rotation
                 cumulative_rotation = (cumulative_rotation + page_response.rotation_correction) % 360
                 logger.info(f"Cumulative rotation is now {cumulative_rotation} degrees")
-                raise ValueError(f"invalid_page rotation for {pdf_orig_path}-{page_num}")
+                raise ValueError(
+                    f"invalid_page rotation for {pdf_orig_path}-{page_num}"
+                )
 
             metrics.add_metrics(**{"completed_pages": 1, f"finished_on_attempt_{attempt}": 1})
             await tracker.track_work(worker_id, f"{pdf_orig_path}-{page_num}", "finished")
@@ -293,14 +301,18 @@ async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path:
                 is_fallback=False,
             )
         except (ConnectionError, OSError, asyncio.TimeoutError) as e:
-            logger.warning(f"Client error on attempt {attempt} for {pdf_orig_path}-{page_num}: {type(e)} {e}")
+            logger.warning(
+                f"Client error on attempt {attempt} for {pdf_orig_path}-{page_num}: {type(e)} {e}"
+            )
 
             # Now we want to do exponential backoff, and not count this as an actual page retry
             # Page retrys are supposed to be for fixing bad results from the model, but actual requests to vllm
             # are supposed to work. Probably this means that the server is just restarting
             sleep_delay = 10 * (2**exponential_backoffs)
             exponential_backoffs += 1
-            logger.info(f"Sleeping for {sleep_delay} seconds on {pdf_orig_path}-{page_num} to allow server restart")
+            logger.info(
+                f"Sleeping for {sleep_delay} seconds on {pdf_orig_path}-{page_num} to allow server restart"
+            )
             await asyncio.sleep(sleep_delay)
         except asyncio.CancelledError:
             logger.info(f"Process page {pdf_orig_path}-{page_num} cancelled")
@@ -316,7 +328,9 @@ async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path:
             logger.exception(f"Unexpected error on attempt {attempt} for {pdf_orig_path}-{page_num}: {type(e)} - {e}")
             attempt += 1
 
-    logger.error(f"Failed to process {pdf_orig_path}-{page_num} after {MAX_RETRIES} attempts.")
+    logger.error(
+        f"Failed to process {pdf_orig_path}-{page_num} after {MAX_RETRIES} attempts."
+    )
     metrics.add_metrics(failed_pages=1)
     await tracker.track_work(worker_id, f"{pdf_orig_path}-{page_num}", "errored")
 
@@ -325,6 +339,7 @@ async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path:
         page_num,
         PageResponse(
             natural_text=get_anchor_text(pdf_local_path, page_num, pdf_engine="pdftotext"),
+
             primary_language=None,
             is_rotation_valid=True,
             rotation_correction=0,
@@ -340,7 +355,9 @@ async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path:
 async def process_pdf(args, worker_id: int, pdf_orig_path: str):
     with tempfile.NamedTemporaryFile("wb+", suffix=".pdf", delete=False) as tf:
         try:
-            data = await asyncio.to_thread(lambda: get_s3_bytes_with_backoff(pdf_s3, pdf_orig_path))
+            data = await asyncio.to_thread(
+                lambda: get_s3_bytes_with_backoff(pdf_s3, pdf_orig_path)
+            )
             tf.write(data)
             tf.flush()
         except ClientError as ex:
@@ -360,8 +377,10 @@ async def process_pdf(args, worker_id: int, pdf_orig_path: str):
         try:
             reader = PdfReader(tf.name)
             num_pages = reader.get_num_pages()
-        except:
-            logger.exception(f"Could not count number of pages for {pdf_orig_path}, aborting document")
+        except Exception:
+            logger.exception(
+                f"Could not count number of pages for {pdf_orig_path}, aborting document"
+            )
             return None
 
         logger.debug(f"Got {num_pages} pages to do for {pdf_orig_path} in worker {worker_id}")
@@ -377,7 +396,9 @@ async def process_pdf(args, worker_id: int, pdf_orig_path: str):
         try:
             async with asyncio.TaskGroup() as tg:
                 for page_num in range(1, num_pages + 1):
-                    task = tg.create_task(process_page(args, worker_id, pdf_orig_path, tf.name, page_num))
+                    task = tg.create_task(
+                        process_page(args, worker_id, pdf_orig_path, tf.name, page_num)
+                    )
                     page_tasks.append(task)
 
             # Collect the results from the entire task group, assuming no exceptions
@@ -421,7 +442,9 @@ def build_dolma_document(pdf_orig_path, page_results):
 
     for index, page_result in enumerate(page_results):
         if page_result.response.natural_text is not None:
-            content = page_result.response.natural_text + ("\n" if index < len(page_results) - 1 else "")
+            content = page_result.response.natural_text + (
+                "\n" if index < len(page_results) - 1 else ""
+            )
         else:
             content = ""
 
@@ -482,7 +505,10 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
 
         try:
             async with asyncio.TaskGroup() as tg:
-                dolma_tasks = [tg.create_task(process_pdf(args, worker_id, pdf)) for pdf in work_item.work_paths]
+                dolma_tasks = [
+                    tg.create_task(process_pdf(args, worker_id, pdf))
+                    for pdf in work_item.work_paths
+                ]
                 logger.info(f"Created all tasks for {work_item.hash}")
 
             logger.info(f"Finished TaskGroup for worker on {work_item.hash}")
@@ -491,7 +517,7 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
             for task in dolma_tasks:
                 try:
                     result = task.result()
-                except:
+                except Exception:
                     # some dolma doc creations may have failed
                     pass
 
@@ -510,7 +536,9 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
 
             try:
                 # Define the output S3 path using the work_hash
-                output_final_path = os.path.join(args.workspace, "results", f"output_{work_item.hash}.jsonl")
+                output_final_path = os.path.join(
+                    args.workspace, "results", f"output_{work_item.hash}.jsonl"
+                )
 
                 if output_final_path.startswith("s3://"):
                     bucket, key = parse_s3_path(output_final_path)
@@ -572,13 +600,19 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
 
             # Update finished token counts from successful documents
             metrics.add_metrics(
-                finished_input_tokens=sum(doc["metadata"]["total-input-tokens"] for doc in dolma_docs),
-                finished_output_tokens=sum(doc["metadata"]["total-output-tokens"] for doc in dolma_docs),
+                finished_input_tokens=sum(
+                    doc["metadata"]["total-input-tokens"] for doc in dolma_docs
+                ),
+                finished_output_tokens=sum(
+                    doc["metadata"]["total-output-tokens"] for doc in dolma_docs
+                ),
             )
 
             await work_queue.mark_done(work_item)
         except Exception as e:
-            logger.exception(f"Exception occurred while processing work_hash {work_item.hash}: {e}")
+            logger.exception(
+                f"Exception occurred while processing work_hash {work_item.hash}: {e}"
+            )
         finally:
             semaphore.release()
 
@@ -622,7 +656,7 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
     def _kill_proc():
         try:
             proc.terminate()
-        except:
+        except Exception:
             logger.info("VLLM Process already terminated")
 
     atexit.register(_kill_proc)
@@ -641,7 +675,10 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
             logger.error("Cannot continue, sampling errors detected, model is probably corrupt")
             sys.exit(1)
 
-        if not server_printed_ready_message and ("The server is fired up and ready to roll!" in line or "Starting vLLM API server" in line):
+        if not server_printed_ready_message and (
+            "The server is fired up and ready to roll!" in line
+            or "Starting vLLM API server" in line
+        ):
             server_printed_ready_message = True
             last_semaphore_release = time.time()
 
@@ -691,7 +728,9 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
                     semaphore.release()
                     running_reqs_decreased = False  # Reset flag after release
                     last_semaphore_release = time.time()
-                    logger.info(f"Semaphore released at {last_running_req} running {last_queue_req} queued, peak: {peak_running_req})")
+                    logger.info(
+                        f"Semaphore released at {last_running_req} running {last_queue_req} queued, peak: {peak_running_req})"
+                    )
         except asyncio.CancelledError:
             pass  # Clean up if the task is cancelled
 
@@ -1094,7 +1133,7 @@ async def main():
     args, unknown_args = parser.parse_known_args()
 
     logger.info(
-        "If you run out of GPU memory during start-up or get 'KV cache is larger than available memory' errors, retry with lower values, e.g. --gpu_memory_utilization 0.80  --max_model_len 16384"
+        "If you run out of GPU memory during start-up or get 'KV cache is larger than available memory' errors, retry with lower values, e.g. --gpu_memory_utilization 0.80 --max_model_len 16384"
     )
 
     global workspace_s3, pdf_s3
