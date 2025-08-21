@@ -7,6 +7,7 @@ import os
 import tempfile
 from functools import partial
 
+import aiofiles
 from pypdf import PdfReader
 from tqdm import tqdm
 
@@ -67,20 +68,20 @@ async def process_pdf(pdf_path, page_num, method, kwargs, output_path, is_async)
         if markdown is None:
             print(f"Warning, did not get output for {os.path.basename(output_path)}")
             # Write blank to this file, so that it's marked as an error and not just skipped in evals
-            with open(output_path, "w") as out_f:
-                out_f.write("")
+            async with aiofiles.open(output_path, "w") as out_f:
+                await out_f.write("")
             return False
 
         # Write the markdown to the output file
-        with open(output_path, "w") as out_f:
-            out_f.write(markdown)
+        async with aiofiles.open(output_path, "w") as out_f:
+            await out_f.write(markdown)
 
         return True
     except Exception as ex:
         print(f"Exception {str(ex)} occurred while processing {os.path.basename(output_path)}")
         # Write blank to this file, so that it's marked as an error and not just skipped in evals
-        with open(output_path, "w") as out_f:
-            out_f.write("")
+        async with aiofiles.open(output_path, "w") as out_f:
+            await out_f.write("")
         return False
 
 

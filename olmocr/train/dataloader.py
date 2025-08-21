@@ -10,13 +10,7 @@ from os import PathLike
 from pathlib import Path
 from typing import (
     Any,
-    Dict,
-    List,
     Optional,
-    Tuple,
-    Type,
-    TypeAlias,
-    Union,
     get_args,
     get_origin,
 )
@@ -75,7 +69,7 @@ def validate_pdf_pair(md_path: Path) -> Tuple[Optional[Dict[str, Path]], Optiona
 
                 return {"markdown_path": md_path, "pdf_path": pdf_path}, None
 
-            except Exception as e:
+            except Exception:
                 return None, (pdf_path, f"Failed to load: {str(e)}")
 
     return None, None
@@ -134,7 +128,7 @@ class BaseMarkdownPDFDataset(Dataset):
                         elif invalid_pdf_info:
                             invalid_pdfs.append(invalid_pdf_info)
 
-                    except Exception as e:
+                    except Exception:
                         logger.error(f"Error processing {md_path}: {str(e)}")
                         invalid_pdfs.append((md_path.with_suffix(".pdf"), f"Processing error: {str(e)}"))
 
@@ -729,7 +723,7 @@ class Tokenizer(PipelineStep):
 class RandomTokenFlipper(PipelineStep):
     """Randomly flips tokens in the output (non-masked) portion and masks their labels."""
 
-    valid_token_ids: List[int]  # List of valid token IDs to substitute with
+    valid_token_ids: list[int]  # List of valid token IDs to substitute with
     token_flip_rate: float = 1e-4
     masking_index: int = -100
 

@@ -308,7 +308,7 @@ def run_vllm(
 
 
 async def run_vllm_async(
-    requests: List[Tuple[str, int, int]],
+    requests: list[tuple[str, int, int]],
     model: str,
     tokenizer: str,
     quantization: Optional[str],
@@ -363,8 +363,8 @@ async def run_vllm_async(
 
     async with build_async_engine_client_from_engine_args(engine_args, disable_frontend_multiprocessing) as llm:
         # Add the requests to the engine.
-        prompts: List[str] = []
-        sampling_params: List[SamplingParams] = []
+        prompts: list[str] = []
+        sampling_params: list[SamplingParams] = []
         for prompt, _, output_len in requests:
             prompts.append(prompt)
             sampling_params.append(
@@ -390,7 +390,7 @@ async def run_vllm_async(
 
 
 def run_hf(
-    requests: List[Tuple[str, int, int]],
+    requests: list[tuple[str, int, int]],
     model: str,
     tokenizer: PreTrainedTokenizerBase,
     n: int,
@@ -405,7 +405,7 @@ def run_hf(
 
     pbar = tqdm(total=len(requests))
     start = time.perf_counter()
-    batch: List[str] = []
+    batch: list[str] = []
     max_prompt_len = 0
     max_output_len = 0
     for i in range(len(requests)):
@@ -445,7 +445,7 @@ def run_hf(
 
 
 def run_mii(
-    requests: List[Tuple[str, int, int]],
+    requests: list[tuple[str, int, int]],
     model: str,
     tensor_parallel_size: int,
     output_len: int,

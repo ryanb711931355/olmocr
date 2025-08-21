@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-from typing import Any, Dict
+from typing import Any
 
 from openai import OpenAI
 
@@ -95,34 +95,33 @@ def process_jsonl_file(input_jsonl_path: str, output_jsonl_path: str, model: str
     """
     processed_count = 0
 
-    with open(output_jsonl_path, "w") as out_file:
-        with open(input_jsonl_path, "r") as in_file:
-            for line_num, line in enumerate(in_file, 1):
+    with open(output_jsonl_path, "w") as out_file, open(input_jsonl_path, "r") as in_file:
+        for line_num, line in enumerate(in_file, 1):
+            try:
+                entry = json.loads(line.strip())
+
+                pdf_path = entry.get("pdf")
+                page_num = entry.get("page", 1)
+                math_expr = entry.get("math")
+
+                if not all([pdf_path, math_expr]):
+                    print(f"Line {line_num}: Skipping entry due to missing required fields")
+                    continue
+
+                print(f"Line {line_num}: Processing: {pdf_path}, page {page_num}")
+
                 try:
-                    entry = json.loads(line.strip())
+                    result = verify_latex_match(pdf_path=pdf_path, page_num=page_num, latex_expression=math_expr, model=model, temperature=temperature)
+                    out_file.write(json.dumps(result) + "\n")
+                    processed_count += 1
+                except Exception as e:
+                    print(f"Line {line_num}: Error processing {pdf_path}: {str(e)}")
+                    error_result = {"pdf": pdf_path, "math": math_expr, "status": "error", "explanation": str(e)}
+                    out_file.write(json.dumps(error_result) + "\n")
+                    processed_count += 1
 
-                    pdf_path = entry.get("pdf")
-                    page_num = entry.get("page", 1)
-                    math_expr = entry.get("math")
-
-                    if not all([pdf_path, math_expr]):
-                        print(f"Line {line_num}: Skipping entry due to missing required fields")
-                        continue
-
-                    print(f"Line {line_num}: Processing: {pdf_path}, page {page_num}")
-
-                    try:
-                        result = verify_latex_match(pdf_path=pdf_path, page_num=page_num, latex_expression=math_expr, model=model, temperature=temperature)
-                        out_file.write(json.dumps(result) + "\n")
-                        processed_count += 1
-                    except Exception as e:
-                        print(f"Line {line_num}: Error processing {pdf_path}: {str(e)}")
-                        error_result = {"pdf": pdf_path, "math": math_expr, "status": "error", "explanation": str(e)}
-                        out_file.write(json.dumps(error_result) + "\n")
-                        processed_count += 1
-
-                except json.JSONDecodeError:
-                    print(f"Line {line_num}: Invalid JSON, skipping")
+            except json.JSONDecodeError:
+                print(f"Line {line_num}: Invalid JSON, skipping")
 
     print(f"Processed {processed_count} entries. Results saved to {output_jsonl_path}")
 

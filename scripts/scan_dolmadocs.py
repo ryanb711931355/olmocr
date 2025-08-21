@@ -10,7 +10,6 @@ import sqlite3
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
 import requests
@@ -101,7 +100,7 @@ def get_original_url(pdf_hash: str, db_path: str) -> Optional[str]:
         if result:
             return result[0]
         return None
-    except Exception as e:
+    except sqlite3.Error as e:
         print(f"Error looking up URL for PDF hash {pdf_hash}: {e}")
         return None
 
@@ -184,7 +183,7 @@ def get_random_pages(s3_client, result_files, count=30):
                 if len(random_pages) >= count:
                     break
 
-        except Exception as e:
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
             print(f"Error processing {result_file}: {e}")
             continue
 
@@ -209,7 +208,7 @@ def create_html_output(random_pages, pdf_s3_client, output_path, workspace_path,
     obfuscated_code = obfuscate_code(prolific_code)
 
     # Get current date and time for the report
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_time = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     html_content = f"""
     <!DOCTYPE html>
@@ -1573,7 +1572,7 @@ def generate_sample_set(args, i, s3_client, pdf_s3_client, result_files):
     return output_filename
 
 
-def extract_datastore_url(html_content: str) -> Optional[str]:
+def extract_datastore_url(html_content: str) -> str | None:
     """Extract the presigned datastore URL from HTML content."""
     match = re.search(r'const\s+presignedGetUrl\s*=\s*"([^"]+)"', html_content)
     if match:
@@ -1581,7 +1580,7 @@ def extract_datastore_url(html_content: str) -> Optional[str]:
     return None
 
 
-def extract_page_number_from_html(html_content: str, page_id: str) -> Optional[int]:
+def extract_page_number_from_html(html_content: str, page_id: str) -> int | None:
     """Extract PDF page number from HTML content for a specific page_id.
 
     This is a fallback mechanism for older versions of the annotation page
@@ -1611,7 +1610,7 @@ def extract_page_number_from_html(html_content: str, page_id: str) -> Optional[i
     return None
 
 
-def fetch_annotations(tinyhost_link: str) -> Tuple[Dict[str, Any], str, str]:
+def fetch_annotations(tinyhost_link: str) -> tuple[dict[str, Any], str, str]:
     """Fetch and parse annotations from a tinyhost link."""
     # Request the HTML content
     print(f"Fetching annotations from {tinyhost_link}")
@@ -1632,12 +1631,12 @@ def fetch_annotations(tinyhost_link: str) -> Tuple[Dict[str, Any], str, str]:
         datastore_response.raise_for_status()
         annotations = datastore_response.json()
         return annotations, tinyhost_link, html_content
-    except Exception as e:
+    except requests.RequestException as e:
         print(f"Error fetching datastore from {datastore_url}: {e}")
         return {}, tinyhost_link, html_content
 
 
-def process_annotations(annotations_by_link: List[Tuple[Dict[str, Any], str, str]]) -> Dict[str, List[Dict[str, Any]]]:
+def process_annotations(annotations_by_link: list[tuple[dict[str, Any], str, str]]) -> dict[str, list[dict[str, Any]]]:
     """Process and categorize annotations by feedback type."""
     results = {
         "public_document": [],
@@ -1741,7 +1740,7 @@ def process_annotations(annotations_by_link: List[Tuple[Dict[str, Any], str, str
     return results
 
 
-def print_annotation_report(annotation_results: Dict[str, List[Dict[str, Any]]], pdf_s3_client=None):
+def print_annotation_report(annotation_results: dict[str, list[dict[str, Any]]], pdf_s3_client=None):
     """Print a summary report of annotations."""
     total_pages = sum(len(items) for items in annotation_results.values())
 
@@ -1887,7 +1886,7 @@ def read_and_process_results(args):
             try:
                 annotations, link_url, html_content = fetch_annotations(link)
                 annotations_by_link.append((annotations, link_url, html_content))
-            except Exception as e:
+            except requests.RequestException as e:
                 print(f"Error processing {link}: {e}")
 
         # Process and categorize annotations
@@ -1952,7 +1951,7 @@ def read_and_process_results(args):
 
         print(f"Report saved to {output_file}")
 
-    except Exception as e:
+    except (IOError, csv.Error) as e:
         print(f"Error processing results: {e}")
         raise
 

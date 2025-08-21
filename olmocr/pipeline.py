@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from functools import cache
 from io import BytesIO
 from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional
 
 import boto3
 import httpx
@@ -104,13 +105,17 @@ class PageResult:
     is_fallback: bool
 
 
-async def build_page_query(local_pdf_path: str, page: int, target_longest_image_dim: int, image_rotation: int = 0) -> dict:
+async def build_page_query(
+    local_pdf_path: str, page: int, target_longest_image_dim: int, image_rotation: int = 0
+) -> dict:
     MAX_TOKENS = 4500
     assert image_rotation in [0, 90, 180, 270], "Invalid image rotation provided in build_page_query"
 
     # Allow the page rendering to process in the background, but limit the number of workers otherwise you can overload the system
     async with pdf_render_max_workers:
-        image_base64 = await asyncio.to_thread(render_pdf_to_base64png, local_pdf_path, page, target_longest_image_dim=target_longest_image_dim)
+        image_base64 = await asyncio.to_thread(
+            render_pdf_to_base64png, local_pdf_path, page, target_longest_image_dim=target_longest_image_dim
+        )
 
     if image_rotation != 0:
         image_bytes = base64.b64decode(image_base64)
@@ -208,13 +213,14 @@ async def apost(url, json_data):
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
 async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path: str, page_num: int) -> PageResult:
-    if args.server:
-        COMPLETION_URL = f"{args.server.rstrip('/')}/v1/chat/completions"
+    server = getattr(args, 'server', None)
+    if server:
+        COMPLETION_URL = f"{server.rstrip('/')}/v1/chat/completions"
     else:
         COMPLETION_URL = f"http://localhost:{BASE_SERVER_PORT}/v1/chat/completions"
     MAX_RETRIES = args.max_page_retries
@@ -360,7 +366,7 @@ async def process_pdf(args, worker_id: int, pdf_orig_path: str):
         try:
             reader = PdfReader(tf.name)
             num_pages = reader.get_num_pages()
-        except:
+        except Exception:
             logger.exception(f"Could not count number of pages for {pdf_orig_path}, aborting document")
             return None
 
@@ -491,7 +497,7 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
             for task in dolma_tasks:
                 try:
                     result = task.result()
-                except:
+                except Exception:
                     # some dolma doc creations may have failed
                     pass
 
@@ -777,7 +783,7 @@ async def download_model(model_name_or_path: str, max_retries: int = 5):
                 logger.info(f"Downloading model with hugging face '{model_name_or_path}'")
                 snapshot_download(repo_id=model_name_or_path)
                 return model_name_or_path
-        except Exception:
+        except Exception as e:
             if retry == max_retries - 1:
                 raise  # Raise on final attempt and fail the job
 
@@ -968,7 +974,7 @@ def print_stats(args, root_work_queue):
                 long_context_docs,
                 long_context_tokens,
             )
-        except Exception as e:
+        except Exception:
             logger.warning(f"Error processing {s3_path}: {e}")
             return 0, 0, 0, 0, 0, set(), 0, 0
 

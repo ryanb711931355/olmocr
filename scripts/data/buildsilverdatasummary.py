@@ -143,8 +143,8 @@ def main():
             try:
                 results = future.result()
                 all_rows.extend(results)
-            except Exception as e:
-                print(f"Error processing file: {future_to_file[future]}\n{e}")
+            except Exception:
+                print(f"Error processing file: {future_to_file[future]}")
 
     os.makedirs(args.output, exist_ok=True)
 

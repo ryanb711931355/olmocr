@@ -20,7 +20,7 @@ import random
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Tuple
+from typing import Tuple
 
 from pypdf import PdfReader
 from tqdm import tqdm
@@ -108,7 +108,7 @@ def evaluate_candidate(
             try:
                 with open(md_path, "r", encoding="utf-8") as f:
                     md_content = f.read()
-            except Exception as e:
+            except OSError as e:
                 local_errors.append(f"Error reading {md_path}: {e}")
                 continue
 

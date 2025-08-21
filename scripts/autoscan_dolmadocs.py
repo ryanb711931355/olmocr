@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import argparse
 import json
 import os
@@ -6,7 +7,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 import boto3
 import pydantic
@@ -220,7 +221,7 @@ def get_random_pages(s3_client, result_files, count=30):
                 if len(random_pages) >= count:
                     break
 
-        except Exception as e:
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
             print(f"Error processing {result_file}: {e}")
             continue
 
@@ -228,7 +229,7 @@ def get_random_pages(s3_client, result_files, count=30):
     return random_pages
 
 
-def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api_key: str, openai_model: str) -> Optional[PIIAnnotation]:
+def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api_key: str, openai_model: str) -> PIIAnnotation | None:
     """Analyze a page using the ChatGPT vision model with structured outputs."""
     try:
         # Download PDF to temp file and render to image
@@ -399,7 +400,7 @@ def categorize_results(all_results):
     return categories
 
 
-def print_annotation_report(annotation_results: Dict[str, List[Dict[str, Any]]]):
+def print_annotation_report(annotation_results: Dict[str, list[Dict[str, Any]]]):
     """Print a summary report of annotations."""
     total_pages = sum(len(items) for items in annotation_results.values())
 
@@ -464,7 +465,7 @@ def print_annotation_report(annotation_results: Dict[str, List[Dict[str, Any]]])
                     print(f"    - {pii_type}: {count} ({count/len(private_with_pii)*100:.1f}%)")
 
         # Print any other PII types not in our categories (like "other")
-        other_pii = [pii_type for pii_type in pii_counts_private.keys() if not any(pii_type in types for types in pii_categories.values())]
+        other_pii = [pii_type for pii_type in pii_counts_private if not any(pii_type in types for types in pii_categories.values())]
         if other_pii:
             print("\n  Other PII types:")
             for pii_type in other_pii:

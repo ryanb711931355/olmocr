@@ -4,6 +4,7 @@ import tempfile
 from typing import Literal
 
 from pypdf import PdfReader, PdfWriter
+import aiofiles
 
 
 async def run_docling(
@@ -39,14 +40,13 @@ async def run_docling(
     pdf_writer.add_page(pdf_reader.pages[zero_based_page_num])
 
     # Create temporary files for the single-page PDF and output markdown
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_pdf_file, tempfile.NamedTemporaryFile(suffix=".md", delete=False) as tmp_md_file:
-        tmp_pdf_path = tmp_pdf_file.name
-        tmp_md_path = tmp_md_file.name
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as _tmp_pdf_file, tempfile.NamedTemporaryFile(suffix=".md", delete=False) as _tmp_md_file:
+        tmp_pdf_path = _tmp_pdf_file.name
+        tmp_md_path = _tmp_md_file.name
 
     try:
         # Write the single-page PDF to the temporary file
-        with open(tmp_pdf_path, "wb") as f:
-            pdf_writer.write(f)
+        await asyncio.to_thread(_write_pdf, pdf_writer, tmp_pdf_path)
 
         # Build the command to run docling on the single-page PDF
         if use_smoldocling:
@@ -64,8 +64,8 @@ async def run_docling(
             raise RuntimeError(f"docling command failed with return code {proc.returncode}: {error_msg}")
 
         # Read the results from the temporary markdown file
-        with open(tmp_md_path, "r", encoding="utf-8") as f:
-            result = f.read()
+        async with aiofiles.open(tmp_md_path, "r", encoding="utf-8") as f:
+            result = await f.read()
 
         return result
 
@@ -74,3 +74,8 @@ async def run_docling(
         for path in [tmp_pdf_path, tmp_md_path]:
             if os.path.exists(path):
                 os.unlink(path)
+
+
+def _write_pdf(pdf_writer: PdfWriter, path: str):
+    with open(path, "wb") as f:
+        pdf_writer.write(f)

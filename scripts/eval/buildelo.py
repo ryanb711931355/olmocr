@@ -153,7 +153,7 @@ if __name__ == "__main__":
                 pdf_results = future.result()
                 all_comps.extend(pdf_results)
             except Exception as e:
-                print(f"Error processing {pdf_path}: {str(e)}")
+                print(f"Error processing {pdf_path}: {e}")
 
     # Remove all results where the alignment is > 0.96 as these are just too similar to be useful
     all_comps = [c for c in all_comps if c.alignment < 0.96]

@@ -296,7 +296,7 @@ def load_jsonl_file(file_path, s3_client=None):
                     dctx = zstd.ZstdDecompressor(max_window_size=2147483648)  # Use a large window size
                     decompressor = dctx.stream_reader(io.BytesIO(raw_data))
                     decompressed = decompressor.read()
-                except Exception as inner_e:
+                except zstd.ZstdError as inner_e:
                     # If both methods fail, try with chunking
                     logger.warning(f"Stream decompression also failed, trying chunked reading: {inner_e}")
 
@@ -319,7 +319,7 @@ def load_jsonl_file(file_path, s3_client=None):
         lines = decompressed.decode("utf-8").strip().split("\n")
         return [json.loads(line) for line in lines if line.strip()]
 
-    except Exception as e:
+    except (gzip.BadGzipFile, zstd.ZstdError, json.JSONDecodeError, UnicodeDecodeError) as e:
         logger.error(f"Error loading file {file_path}: {e}")
         return []
 
@@ -428,7 +428,7 @@ def load_documents_and_attributes(docs_folder, attr_folder, s3_client=None, recu
                         if "attributes" not in doc:
                             doc["attributes"] = {}
                         merged_docs.append(doc)
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, OSError) as e:
                 logger.error(f"Error processing document file {doc_path}: {e}")
                 continue
 
@@ -490,10 +490,10 @@ def load_documents_and_attributes(docs_folder, attr_folder, s3_client=None, recu
 
                             logger.info(f"Matched attributes for {docs_matched_in_file} documents from {basename} in {subdir}")
 
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, OSError) as e:
                         logger.error(f"Error processing attribute file {attr_path}: {e}")
                         continue
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, OSError) as e:
                 logger.error(f"Error processing attribute subdirectory {subdir}: {e}")
                 continue
 
@@ -505,7 +505,7 @@ def load_documents_and_attributes(docs_folder, attr_folder, s3_client=None, recu
         logger.info(f"Total attribute subdirectories processed: {len(attr_subdirs)}")
 
         return merged_docs
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, OSError) as e:
         logger.error(f"Error in load_documents_and_attributes: {e}")
         raise
 
@@ -1040,7 +1040,7 @@ def parse_rule(rule_string):
             parser = Parser(tokens)
             return parser.parse()
         except Exception as e:
-            raise ValueError(f"Error parsing expression '{rule_string}': {e}")
+            raise ValueError(f"Error parsing expression '{rule_string}': {e}") from e
 
 
 def is_complex_expression(rule):

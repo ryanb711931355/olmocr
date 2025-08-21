@@ -8,7 +8,7 @@ import posixpath
 import time
 from io import BytesIO, TextIOWrapper
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
@@ -138,7 +138,7 @@ def get_s3_bytes_with_backoff(s3_client, pdf_s3_path, max_retries: int = 8, back
                 logger.warning(f"Attempt {attempt+1} failed to get_s3_bytes for {pdf_s3_path}: {e}. Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
                 attempt += 1
-        except Exception as e:
+        except (ClientError, OSError) as e:
             wait_time = backoff_factor**attempt
             logger.warning(f"Attempt {attempt+1} failed to get_s3_bytes for {pdf_s3_path}: {e}. Retrying in {wait_time} seconds...")
             time.sleep(wait_time)

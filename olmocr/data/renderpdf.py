@@ -1,7 +1,6 @@
 import base64
 import io
 import subprocess
-from typing import List
 
 from PIL import Image
 
@@ -29,8 +28,8 @@ def get_pdf_media_box_width_height(local_pdf_path: str, page_num: int) -> tuple[
 
     for line in output.splitlines():
         if "MediaBox" in line:
-            media_box_str: List[str] = line.split(":")[1].strip().split()
-            media_box: List[float] = [float(x) for x in media_box_str]
+            media_box_str: list[str] = line.split(":")[1].strip().split()
+            media_box: list[float] = [float(x) for x in media_box_str]
             return abs(media_box[0] - media_box[2]), abs(media_box[3] - media_box[1])
 
     raise ValueError("MediaBox not found in the PDF info.")

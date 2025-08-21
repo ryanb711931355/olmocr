@@ -20,7 +20,7 @@ import json
 import os
 import random
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 import boto3
 import pypdf
@@ -61,7 +61,7 @@ def download_pdf_from_s3(s3_path: str, local_path: str) -> bool:
         # Download file
         s3.download_file(bucket, key, local_path)
         return True
-    except Exception as e:
+    except OSError as e:
         print(f"Error downloading {s3_path}: {str(e)}")
         return False
 
@@ -99,12 +99,12 @@ def extract_page_from_pdf(input_path: str, output_path: str, page_num: int) -> b
             writer.write(output_file)
 
         return True
-    except Exception as e:
+    except pypdf.errors.PdfReadError as e:
         print(f"Error extracting page {page_num} from {input_path}: {str(e)}")
         raise
 
 
-def analyze_document_layout(pdf_path: str, page_num: int, api_key: str) -> Optional[Tuple[Dict[str, Any], str]]:
+def analyze_document_layout(pdf_path: str, page_num: int, api_key: str) -> Optional[tuple[dict[str, Any], str]]:
     """
     Use Gemini to analyze document layout features in a rendered PDF page.
 
@@ -114,7 +114,7 @@ def analyze_document_layout(pdf_path: str, page_num: int, api_key: str) -> Optio
         api_key: Gemini API key
 
     Returns:
-        Optional[Tuple[Dict[str, Any], str]]:
+        Optional[tuple[dict[str, Any], str]]:
             A tuple with the layout analysis results as a dictionary and the base64 string of the rendered page image.
             Returns None if analysis fails.
     """
@@ -218,7 +218,7 @@ def analyze_document_layout(pdf_path: str, page_num: int, api_key: str) -> Optio
         # Return both the layout analysis and the rendered image (base64 string)
         return (layout_analysis, image_base64)
 
-    except Exception as e:
+    except (json.JSONDecodeError, Exception) as e:
         print(f"Error analyzing document layout in {pdf_path} page {page_num}: {str(e)}")
         return None
 
@@ -286,7 +286,7 @@ def extract_document_content(pdf_path: str, page_num: int, image_base64: str, ap
         return None
 
 
-def should_extract_full_content(layout_analysis: Dict[str, Any]) -> bool:
+def should_extract_full_content(layout_analysis: dict[str, Any]) -> bool:
     """
     Determine if full content extraction is needed based on layout analysis results.
 
@@ -327,7 +327,7 @@ def should_extract_full_content(layout_analysis: Dict[str, Any]) -> bool:
     return False
 
 
-def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> Dict:
+def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> dict:
     """
     Process a single PDF from S3.
 
@@ -338,7 +338,7 @@ def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> D
         api_key: Gemini API key
 
     Returns:
-        Dict: Results of processing the PDF
+        dict: Results of processing the PDF
     """
     # Create a thread-specific temp directory to avoid conflicts
     thread_id = threading.get_ident()
@@ -423,7 +423,7 @@ def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> D
             os.remove(local_pdf_path)
 
 
-def process_pdfs_parallel(s3_paths: List[str], temp_dir: str, output_dir: str, api_key: str, max_docs: int, num_workers: int):
+def process_pdfs_parallel(s3_paths: list[str], temp_dir: str, output_dir: str, api_key: str, max_docs: int, num_workers: int):
     """
     Process PDFs in parallel using a thread pool.
 

@@ -3,7 +3,6 @@ import argparse
 import json
 import re
 import sqlite3
-from typing import Optional
 
 
 def parse_pdf_hash(pretty_pdf_path: str) -> Optional[str]:
@@ -57,7 +56,7 @@ if __name__ == "__main__":
 
     if not args.force:
         print("Now run with --force to write data")
-        quit()
+        sys.exit(0)
 
     with open(args.jsonl, "w") as inpf:
         for row in data:

@@ -23,7 +23,8 @@ import re
 import subprocess
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List
+from typing import Dict
+from typing import List
 
 import pypdf
 from anthropic import Anthropic
@@ -223,7 +224,7 @@ async def render_pdf_with_playwright(html_content, output_pdf_path, png_width, p
                         return True
                     else:
                         print(f"PDF has {len(reader.pages)} pages with scale factor {scale}, trying a smaller scale...")
-                except Exception as pdf_check_error:
+                except pypdf.PdfReadError as pdf_check_error:
                     print(f"Error checking PDF page count: {pdf_check_error}")
                     return False
 
@@ -255,7 +256,7 @@ def process_pdf(pdf_info, args, client):
             print(f"PDF has no pages: {local_pdf_path}")
             return None
         page_num = random.randint(1, num_pages)
-    except Exception as e:
+    except pypdf.PdfReadError as e:
         print(f"Error reading {local_pdf_path}: {e}")
         return None
 
@@ -283,7 +284,7 @@ def process_pdf(pdf_info, args, client):
     try:
         with open(html_path, "w") as f:
             f.write(html_content)
-    except Exception as e:
+    except OSError as e:
         print(f"Error saving HTML for {local_pdf_path}: {e}")
         return None
 
@@ -315,7 +316,7 @@ def process_pdf(pdf_info, args, client):
     try:
         if os.path.exists(temp_pdf_dir):
             subprocess.run(["rm", "-rf", temp_pdf_dir])
-    except Exception as e:
+    except OSError as e:
         print(f"Error cleaning up temp directory {temp_pdf_dir}: {e}")
 
     return {
@@ -389,6 +390,8 @@ def main():
                             if test.get("type") == "order":
                                 test_types["order"] += 1
                         print(f"Added {len(result['tests'])} tests from {result['pdf_id']}, total: {test_counter}")
+            except concurrent.futures.CancelledError as e:
+                print(f"Error processing {pdf_path}: {e}")
             except Exception as e:
                 print(f"Error processing {pdf_path}: {e}")
 

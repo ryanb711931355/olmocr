@@ -20,7 +20,7 @@ import sqlite3
 import threading
 import unittest
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Optional
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright

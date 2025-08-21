@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import argparse
 import glob
 import json
@@ -117,6 +116,7 @@ def main():
 
     except Exception as e:
         print(f"Error loading or processing Hugging Face dataset: {e}")
+        raise
 
 
 if __name__ == "__main__":

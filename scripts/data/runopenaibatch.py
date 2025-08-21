@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Sends list of batch files to OpenAI for processing
 # However, it also waits and gets the files when they are done, saves its state, and
 # allows you to submit more than the 100GB of file request limits that the openaiAPI has
@@ -101,7 +102,7 @@ def get_state(folder_path: str) -> dict:
                 "batch_id": None,
                 "state": "init",
                 "size": os.path.getsize(os.path.join(folder_path, f)),
-                "last_checked": datetime.datetime.now(),
+                "last_checked": datetime.datetime.now(datetime.timezone.utc),
             }
             for f in jsonl_files
         }
@@ -168,7 +169,7 @@ def get_done_total(folder_path):
 def process_folder(folder_path: str, max_gb: int):
     output_folder = f"{folder_path.rstrip('/')}_done"
     os.makedirs(output_folder, exist_ok=True)
-    last_loop_time = datetime.datetime.now()
+    last_loop_time = datetime.datetime.now(datetime.timezone.utc)
 
     starting_free_space = MAX_OPENAI_DISK_SPACE - get_total_space_usage()
 
@@ -185,7 +186,7 @@ def process_folder(folder_path: str, max_gb: int):
         print(f"Processing {os.path.basename(work_item['filename'])}, cur status = {work_item['state']}")
 
         # If all work items have been checked on, then you need to sleep a bit
-        if last_loop_time > datetime.datetime.now() - datetime.timedelta(seconds=1):
+        if last_loop_time > datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=1):
             time.sleep(0.2)
 
         if work_item["state"] == "init":
@@ -227,13 +228,14 @@ def process_folder(folder_path: str, max_gb: int):
 
                 try:
                     client.files.delete(batch_data.input_file_id)
-                except:
+                except Exception as ex:
+                    print(ex)
                     print("Could not delete old file data")
             else:
                 # Update the time you checked so you can move onto the next time
                 update_state(folder_path, work_item["filename"])
 
-        last_loop_time = datetime.datetime.now()
+        last_loop_time = datetime.datetime.now(datetime.timezone.utc)
 
     print("All work has been completed")
 
@@ -252,7 +254,7 @@ if __name__ == "__main__":
         if input(f"Are you sure you want to delete {len(all_files)} files from your OpenAI account? [y/N]").lower() == "y":
             for file in tqdm(all_files):
                 client.files.delete(file.id)
-        quit()
+        sys.exit(0)
 
     # Process the folder and start batches
     process_folder(args.folder, args.max_gb)

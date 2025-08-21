@@ -17,7 +17,6 @@ import os
 import re
 import sys
 import time
-from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
@@ -278,9 +277,6 @@ async def apost(url, json_data):
             raise ConnectionError("Anything other than fixed content length responses are not implemented yet")
 
         return status_code, response_body
-    except Exception as e:
-        # Pass through errors
-        raise e
     finally:
         # But just make sure to close the socket on your way out
         if writer is not None:
@@ -403,8 +399,7 @@ async def process_file(args, worker_id: int, file_uri: str):
     if file_uri.startswith("s3://"):
         raw = await asyncio.to_thread(get_s3_bytes_with_backoff, dataset_s3, file_uri)
     else:
-        with open(file_uri, "rb") as f:
-            raw = f.read()
+        raw = await asyncio.to_thread(lambda: open(file_uri, "rb").read())
 
     # Decompress if needed
     if file_uri.endswith(".gz"):
@@ -506,7 +501,7 @@ async def worker(args, work_queue: WorkQueue, semaphore: asyncio.Semaphore, work
             else:
                 sentinel_path = os.path.join(args.scratch, sentinel_rel)
                 os.makedirs(os.path.dirname(sentinel_path), exist_ok=True)
-                open(sentinel_path, "w").close()
+                await asyncio.to_thread(lambda: open(sentinel_path, "w").close())
 
         except Exception as exc:
             logger.exception(f"Worker {worker_id} exception: {exc!s}")
@@ -643,7 +638,7 @@ async def check_server_ready():
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
+        except httpx.HTTPError:
             logger.warning(f"Attempt {attempt}: Please wait for model server to become ready...")
 
         await asyncio.sleep(delay_sec)
@@ -815,13 +810,11 @@ async def main():
         if "AWS_CREDENTIALS_FILE" in os.environ:
             cred_path = os.path.join(os.path.expanduser("~"), ".aws", "credentials")
             os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-            with open(cred_path, "w") as f:
-                f.write(os.environ.get("AWS_CREDENTIALS_FILE"))
+            await asyncio.to_thread(lambda: open(cred_path, "w").write(os.environ.get("AWS_CREDENTIALS_FILE")))
         if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
             cred_path = os.path.join(os.path.expanduser("~"), ".gcs", "credentials")
             os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-            with open(cred_path, "w") as f:
-                f.write(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE"))
+            await asyncio.to_thread(lambda: open(cred_path, "w").write(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE")))
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
         workspace_s3 = boto3.client("s3")
         dataset_s3 = boto3.client("s3")

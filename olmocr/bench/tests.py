@@ -5,7 +5,7 @@ import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import List, Optional, Set, Tuple
+from typing import Optional
 
 import numpy as np
 from bs4 import BeautifulSoup
@@ -110,7 +110,7 @@ class ValidationError(Exception):
     pass
 
 
-def normalize_text(md_content: str) -> str:
+def normalize_text(md_content: str) -> Optional[str]:
     if md_content is None:
         return None
 
@@ -252,7 +252,7 @@ def parse_markdown_tables(md_content: str) -> List[TableData]:
     return parsed_tables
 
 
-def _process_table_lines(table_lines: List[str]) -> List[List[str]]:
+def _process_table_lines(table_lines: list[str]) -> list[list[str]]:
     """
     Process a list of lines that potentially form a markdown table.
 
@@ -298,7 +298,7 @@ def _process_table_lines(table_lines: List[str]) -> List[List[str]]:
     return table_data
 
 
-def parse_html_tables(html_content: str) -> List[TableData]:
+def parse_html_tables(html_content: str) -> list[TableData]:
     """
     Extract and parse all HTML tables from the provided content.
     Identifies header rows and columns, and maps them properly handling rowspan/colspan.
@@ -965,7 +965,7 @@ class MathTest(BasePDFTest):
         return False, f"No match found for {self.math} anywhere in content"
 
 
-def load_tests(jsonl_file: str) -> List[BasePDFTest]:
+def load_tests(jsonl_file: str) -> list[BasePDFTest]:
     """
     Load tests from a JSONL file using parallel processing with a ThreadPoolExecutor.
 
@@ -976,7 +976,7 @@ def load_tests(jsonl_file: str) -> List[BasePDFTest]:
         A list of test objects.
     """
 
-    def process_line(line_tuple: Tuple[int, str]) -> Optional[Tuple[int, BasePDFTest]]:
+    def process_line(line_tuple: tuple[int, str]) -> Optional[tuple[int, BasePDFTest]]:
         """
         Process a single line from the JSONL file and return a tuple of (line_number, test object).
         Returns None for empty lines.

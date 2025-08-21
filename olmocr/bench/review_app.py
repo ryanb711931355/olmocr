@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 import json
 import os
@@ -6,7 +5,7 @@ import shutil
 import sys
 import tempfile
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
 
@@ -23,31 +22,27 @@ ALL_PDFS = []
 FORCE = False  # New global flag
 
 
-def find_next_unchecked_pdf() -> Optional[str]:
+def find_next_unchecked_pdf(pdf_tests: dict, all_pdfs: list) -> Optional[str]:
     """Find the next PDF with at least one unchecked test."""
-    global PDF_TESTS, ALL_PDFS
-
-    for pdf_name in ALL_PDFS:
-        pdf_tests = PDF_TESTS[pdf_name]
-        for test in pdf_tests:
+    for pdf_name in all_pdfs:
+        tests = pdf_tests[pdf_name]
+        for test in tests:
             if test.get("checked") is None:
                 return pdf_name
     return None
 
 
-def calculate_stats() -> dict:
+def calculate_stats(pdf_tests: dict) -> dict:
     """Calculate statistics for all tests in the dataset."""
-    global PDF_TESTS
-
     total_tests = 0
     null_status = 0
     verified_status = 0
     rejected_status = 0
 
-    for pdf_tests in PDF_TESTS.values():
-        total_tests += len(pdf_tests)
+    for tests in pdf_tests.values():
+        total_tests += len(tests)
 
-        for test in pdf_tests:
+        for test in tests:
             status = test.get("checked")
             if status is None:
                 null_status += 1
@@ -63,14 +58,12 @@ def calculate_stats() -> dict:
     return {"total": total_tests, "null": null_status, "verified": verified_status, "rejected": rejected_status, "completion": completion}
 
 
-def save_dataset(jsonl_file: str) -> None:
+def save_dataset(pdf_tests: dict, jsonl_file: str) -> None:
     """Save the tests to a JSONL file, using temp file for atomic write."""
-    global PDF_TESTS
-
     # Flatten all tests
     all_tests = []
-    for pdf_tests in PDF_TESTS.values():
-        all_tests.extend(pdf_tests)
+    for tests in pdf_tests.values():
+        all_tests.extend(tests)
 
     # Create temp file and write updated content
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as temp_file:
@@ -95,7 +88,7 @@ def index():
 
     # If no current PDF is set, find the next one with unchecked tests
     if CURRENT_PDF is None:
-        CURRENT_PDF = find_next_unchecked_pdf()
+        CURRENT_PDF = find_next_unchecked_pdf(PDF_TESTS, ALL_PDFS)
 
     # If still no PDF, either show the "All done" page or force display the first PDF
     if CURRENT_PDF is None:
@@ -111,7 +104,7 @@ def index():
     pdf_url = url_for("serve_pdf", pdf_name=CURRENT_PDF)
 
     # Calculate statistics
-    stats = calculate_stats()
+    stats = calculate_stats(PDF_TESTS)
 
     return render_template(
         "review.html",
@@ -142,7 +135,7 @@ def update_test():
             break
 
     # Save the updated tests
-    save_dataset(DATASET_FILE)
+    save_dataset(PDF_TESTS, DATASET_FILE)
 
     return jsonify({"status": "success"})
 
@@ -161,7 +154,7 @@ def reject_all():
             test["checked"] = "rejected"
 
         # Save the updated tests
-        save_dataset(DATASET_FILE)
+        save_dataset(PDF_TESTS, DATASET_FILE)
 
         return jsonify({"status": "success", "count": len(PDF_TESTS[pdf_name])})
 
@@ -171,7 +164,7 @@ def reject_all():
 @app.route("/next_pdf", methods=["POST"])
 def next_pdf():
     """Move to the next PDF in the list."""
-    global CURRENT_PDF, ALL_PDFS, FORCE
+    global CURRENT_PDF, ALL_PDFS, FORCE, PDF_TESTS
 
     if CURRENT_PDF in ALL_PDFS:
         current_index = ALL_PDFS.index(CURRENT_PDF)
@@ -182,12 +175,12 @@ def next_pdf():
             if FORCE and ALL_PDFS:
                 CURRENT_PDF = ALL_PDFS[0]
             else:
-                CURRENT_PDF = find_next_unchecked_pdf()
+                CURRENT_PDF = find_next_unchecked_pdf(PDF_TESTS, ALL_PDFS)
     else:
         if FORCE and ALL_PDFS:
             CURRENT_PDF = ALL_PDFS[0]
         else:
-            CURRENT_PDF = find_next_unchecked_pdf()
+            CURRENT_PDF = find_next_unchecked_pdf(PDF_TESTS, ALL_PDFS)
 
     return redirect(url_for("index"))
 
@@ -287,7 +280,7 @@ def main():
     create_templates_directory()
 
     # Find first PDF with unchecked tests
-    CURRENT_PDF = find_next_unchecked_pdf()
+    CURRENT_PDF = find_next_unchecked_pdf(PDF_TESTS, ALL_PDFS)
 
     # Start Flask app
     print(f"Starting server at http://{args.host}:{args.port}")

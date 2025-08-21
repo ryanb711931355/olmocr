@@ -17,7 +17,6 @@ import os
 import re
 import sys
 import time
-from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
@@ -228,7 +227,7 @@ async def apost(url, json_data):
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
@@ -296,8 +295,7 @@ async def process_file(args, worker_id: int, file_uri: str):
     if file_uri.startswith("s3://"):
         raw = await asyncio.to_thread(get_s3_bytes_with_backoff, dataset_s3, file_uri)
     else:
-        with open(file_uri, "rb") as f:
-            raw = f.read()
+        raw = await asyncio.to_thread(lambda: open(file_uri, "rb").read())
 
     # Decompress if needed
     if file_uri.endswith(".gz"):
@@ -402,7 +400,7 @@ async def worker(args, work_queue: WorkQueue, semaphore: asyncio.Semaphore, work
                 open(sentinel_path, "w").close()
 
         except Exception as exc:
-            logger.exception(f"Worker {worker_id} exception: {exc!s}")
+            logger.exception(f"Worker {worker_id} exception: {exc}")
         finally:
             semaphore.release()
 

@@ -98,7 +98,7 @@ def download_image(url, output_filename, output_dir):
         return output_path
 
     except Exception as e:
-        print(f"Error downloading image: {str(e)}")
+        print(f"Error downloading image: {e}")
         return None
 
 

@@ -9,7 +9,7 @@ import os
 import random
 from asyncio import Queue, QueueEmpty
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional
 
 import zstandard
 
@@ -205,7 +205,7 @@ class WorkQueue:
             # Create lock (overwrites if stale)
             try:
                 await self.backend.create_worker_lock(work_item.hash)
-            except Exception as e:
+            except OSError as e:
                 logger.warning(f"Failed to create lock for {work_item.hash}: {e}")
                 self._queue.task_done()
                 continue
@@ -269,14 +269,14 @@ class LocalBackend(Backend):
         with open(local_path, "wb") as f:
             f.write(compressed_data)
 
-    async def load_index_lines(self) -> List[str]:
+    async def load_index_lines(self) -> list[str]:
         return await asyncio.to_thread(self._download_zstd_csv_local, self._index_path)
 
-    async def save_index_lines(self, lines: List[str]) -> None:
+    async def save_index_lines(self, lines: list[str]) -> None:
         await asyncio.to_thread(self._upload_zstd_csv_local, self._index_path, lines)
 
-    async def get_completed_hashes(self) -> Set[str]:
-        def _list_completed() -> Set[str]:
+    async def get_completed_hashes(self) -> set[str]:
+        def _list_completed() -> set[str]:
             if not os.path.isdir(self._done_flags_dir):
                 return set()
             return {f[len("done_") : -len(".flag")] for f in os.listdir(self._done_flags_dir) if f.startswith("done_") and f.endswith(".flag")}
@@ -318,7 +318,7 @@ class LocalBackend(Backend):
 
         def _create() -> None:
             with open(lock_path, "wb"):
-                pass
+                ...
 
         await asyncio.to_thread(_create)
 
@@ -343,7 +343,7 @@ class LocalBackend(Backend):
 
         def _create() -> None:
             with open(done_flag_path, "wb"):
-                pass
+                ...
 
         await asyncio.to_thread(_create)
 
@@ -357,14 +357,14 @@ class S3Backend(Backend):
         self._index_path = os.path.join(self.workspace_path, "work_index_list.csv.zstd")
         self._output_glob = os.path.join(self.workspace_path, DONE_FLAGS_DIR, "*.flag")
 
-    async def load_index_lines(self) -> List[str]:
+    async def load_index_lines(self) -> list[str]:
         return await asyncio.to_thread(download_zstd_csv, self.s3_client, self._index_path)
 
-    async def save_index_lines(self, lines: List[str]) -> None:
+    async def save_index_lines(self, lines: list[str]) -> None:
         await asyncio.to_thread(upload_zstd_csv, self.s3_client, self._index_path, lines)
 
-    async def get_completed_hashes(self) -> Set[str]:
-        def _list_completed() -> Set[str]:
+    async def get_completed_hashes(self) -> set[str]:
+        def _list_completed() -> set[str]:
             done_work_items = expand_s3_glob(self.s3_client, self._output_glob)
             return {
                 os.path.basename(item)[len("done_") : -len(".flag")]

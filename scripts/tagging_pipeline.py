@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Tagging pipeline for Dolma JSONL datasets.
 
@@ -18,7 +17,6 @@ import random
 import re
 import sys
 import time
-from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
@@ -70,8 +68,8 @@ metrics = MetricsKeeper(window=60 * 5)
 class PIIClassification(BaseModel):
     primary_language: str = Field(..., description="Primary language as a two-letter code")
     document_type: str = Field(..., description="Basic summary of document type classification")
-    is_resume_cv: Optional[bool] = Field(..., description="True if the document is a page from a resume or cv")
-    contains_pii: Optional[bool] = Field(..., description="True if document contains PII")
+    is_resume_cv: bool | None = Field(..., description="True if the document is a page from a resume or cv")
+    contains_pii: bool | None = Field(..., description="True if document contains PII")
 
 
 async def _process_single_page(page_text: str) -> PIIClassification:
@@ -214,7 +212,7 @@ async def apost(url, json_data):
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
@@ -282,8 +280,7 @@ async def process_file(args, worker_id: int, file_uri: str):
     if file_uri.startswith("s3://"):
         raw = await asyncio.to_thread(get_s3_bytes_with_backoff, dataset_s3, file_uri)
     else:
-        with open(file_uri, "rb") as f:
-            raw = f.read()
+        raw = await asyncio.to_thread(lambda: open(file_uri, "rb").read())
 
     # Decompress if needed
     if file_uri.endswith(".gz"):
@@ -455,7 +452,7 @@ async def server_task(model_name_or_path, args, semaphore):
             try:
                 line = line.decode("utf-8").rstrip()
                 await process_line(line)
-            except Exception as ex:
+            except UnicodeDecodeError as ex:
                 logger.warning(f"Got {ex} when reading log line from inference server, skipping")
 
     async def timeout_task():
@@ -517,7 +514,7 @@ async def check_server_ready():
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
+        except (httpx.RequestError, httpx.HTTPStatusError):
             logger.warning(f"Attempt {attempt}: Please wait for model server to become ready...")
 
         await asyncio.sleep(delay_sec)
@@ -593,7 +590,7 @@ def submit_beaker_job(args):
         b.secret.write(f"{owner}-WEKA_SECRET_ACCESS_KEY", os.environ.get("WEKA_SECRET_ACCESS_KEY", ""), args.beaker_workspace)
         b.secret.write(
             f"{owner}-AWS_CREDENTIALS_FILE",
-            open(os.path.join(os.path.expanduser("~"), ".aws", "credentials")).read(),
+            await asyncio.to_thread(lambda: open(os.path.join(os.path.expanduser("~"), ".aws", "credentials")).read()),
             args.beaker_workspace,
         )
 
@@ -616,7 +613,8 @@ def submit_beaker_job(args):
         print("Input the olmo-gcs SA key if you would like to load weights from gcs (end with a double newline):")
         lines = []
         prev_empty = False
-        for line in iter(input, None):
+        while True:
+            line = await asyncio.to_thread(input)
             if not line and prev_empty:
                 break
             prev_empty = not line
@@ -689,13 +687,11 @@ async def main():
         if "AWS_CREDENTIALS_FILE" in os.environ:
             cred_path = os.path.join(os.path.expanduser("~"), ".aws", "credentials")
             os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-            with open(cred_path, "w") as f:
-                f.write(os.environ.get("AWS_CREDENTIALS_FILE"))
+            await asyncio.to_thread(lambda: open(cred_path, "w").write(os.environ.get("AWS_CREDENTIALS_FILE")))
         if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
             cred_path = os.path.join(os.path.expanduser("~"), ".gcs", "credentials")
             os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-            with open(cred_path, "w") as f:
-                f.write(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE"))
+            await asyncio.to_thread(lambda: open(cred_path, "w").write(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE")))
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
         workspace_s3 = boto3.client("s3")
         dataset_s3 = boto3.client("s3")

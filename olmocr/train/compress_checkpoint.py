@@ -23,10 +23,10 @@ import json
 import os
 import random
 import shutil
+import sys
 import tempfile
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
 
 import boto3
 import torch
@@ -252,7 +252,7 @@ def copy_additional_files(source_path: str, dest_path: str, temp_source_dir: Opt
 
 
 # Define a oneshot data collator for multimodal inputs.
-def data_collator(batch):
+def data_collator(batch: list[dict]) -> dict:
     assert len(batch) == 1
     return {key: torch.tensor(value) for key, value in batch[0].items()}
 
@@ -406,4 +406,4 @@ Examples:
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

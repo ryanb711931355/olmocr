@@ -66,7 +66,7 @@ class Muon(torch.optim.Optimizer):
     """
 
     def __init__(self, params, lr=0.02, weight_decay=0, momentum=0.95):
-        defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum)
+        defaults = {"lr": lr, "weight_decay": weight_decay, "momentum": momentum}
         assert isinstance(params, list) and len(params) >= 1 and isinstance(params[0], torch.nn.Parameter)
         params = sorted(params, key=lambda x: x.size(), reverse=True)
         super().__init__(params, defaults)
@@ -105,7 +105,7 @@ class SingleDeviceMuon(torch.optim.Optimizer):
     """
 
     def __init__(self, params, lr=0.02, weight_decay=0, momentum=0.95):
-        defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum)
+        defaults = {"lr": lr, "weight_decay": weight_decay, "momentum": momentum}
         super().__init__(params, defaults)
 
     @torch.no_grad()
@@ -184,7 +184,7 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
                 group["eps"] = group.get("eps", 1e-10)
                 group["weight_decay"] = group.get("weight_decay", 0)
                 assert set(group.keys()) == set(["params", "lr", "betas", "eps", "weight_decay", "use_muon"])
-        super().__init__(param_groups, dict())
+        super().__init__(param_groups, {})
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -250,7 +250,7 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
                 group["eps"] = group.get("eps", 1e-10)
                 group["weight_decay"] = group.get("weight_decay", 0)
                 assert set(group.keys()) == set(["params", "lr", "betas", "eps", "weight_decay", "use_muon"])
-        super().__init__(param_groups, dict())
+        super().__init__(param_groups, {})
 
     @torch.no_grad()
     def step(self, closure=None):

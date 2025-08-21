@@ -227,7 +227,7 @@ def load_document_file(s3_client, file_path):
 
         # Return the decoded lines
         return file_bytes.decode("utf-8").strip().split("\n")
-    except Exception as e:
+    except (IOError, OSError, zstandard.ZstdError) as e:
         logger.error(f"Error loading file {file_path}: {e}")
         return []
 
@@ -253,9 +253,8 @@ def get_document_info_from_line(line, file_path, line_index):
             return None
 
         # Just use the first page for each document
-        if page_spans:
-            page_span = page_spans[0]  # Just get the first page
-            if len(page_span) >= 3:
+        page_span = page_spans[0]  # Just get the first page
+        if len(page_span) >= 3:
                 # Page spans are [start_pos, end_pos, page_num]
                 page_num = page_span[2]
 

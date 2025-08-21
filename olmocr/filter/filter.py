@@ -2,7 +2,6 @@ import logging
 import re
 import subprocess
 from collections import Counter
-from typing import List
 
 from lingua import Language, LanguageDetectorBuilder
 from pypdf import PdfReader
@@ -81,6 +80,7 @@ class PdfFilter:
             timeout=60,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            check=True,
         )
         if pdftotext_result.returncode != 0:
             logger.warning(f"pdftotext returned {pdftotext_result.returncode} on {local_pdf_path}")
@@ -146,7 +146,7 @@ if __name__ == "__main__":
         s3_work_paths: List[str] = list(filter(None, (line.strip() for line in tqdm(f, desc="Loading paths"))))
 
     # Initialize the PDF filter
-    filter = PdfFilter(
+    pdf_filter = PdfFilter(
         languages_to_keep={Language.ENGLISH, None},  # none means could not detect language, that's okay keep it, might be an OCR
         apply_download_spam_check=True,
         apply_form_check=True,
