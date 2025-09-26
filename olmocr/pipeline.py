@@ -517,7 +517,9 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
 
         try:
             async with asyncio.TaskGroup() as tg:
-                dolma_tasks = [tg.create_task(process_pdf(args, worker_id, pdf)) for pdf in work_item.work_paths]
+                dolma_tasks = [
+                    tg.create_task(process_pdf(args, worker_id, pdf)) for pdf in work_item.work_paths
+                ]
                 logger.info(f"Created all tasks for {work_item.hash}")
 
             logger.info(f"Finished TaskGroup for worker on {work_item.hash}")
@@ -526,7 +528,7 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
             for task in dolma_tasks:
                 try:
                     result = task.result()
-                except:
+                except Exception:
                     # some dolma doc creations may have failed
                     pass
 
@@ -545,7 +547,9 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
 
             try:
                 # Define the output S3 path using the work_hash
-                output_final_path = os.path.join(args.workspace, "results", f"output_{work_item.hash}.jsonl")
+                output_final_path = os.path.join(
+                    args.workspace, "results", f"output_{work_item.hash}.jsonl"
+                )
 
                 if output_final_path.startswith("s3://"):
                     bucket, key = parse_s3_path(output_final_path)
@@ -607,8 +611,12 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
 
             # Update finished token counts from successful documents
             metrics.add_metrics(
-                finished_input_tokens=sum(doc["metadata"]["total-input-tokens"] for doc in dolma_docs),
-                finished_output_tokens=sum(doc["metadata"]["total-output-tokens"] for doc in dolma_docs),
+                finished_input_tokens=sum(
+                    doc["metadata"]["total-input-tokens"] for doc in dolma_docs
+                ),
+                finished_output_tokens=sum(
+                    doc["metadata"]["total-output-tokens"] for doc in dolma_docs
+                ),
             )
 
             await work_queue.mark_done(work_item)
@@ -657,7 +665,7 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
     def _kill_proc():
         try:
             proc.terminate()
-        except:
+        except Exception:
             logger.info("VLLM Process already terminated")
 
     atexit.register(_kill_proc)
@@ -676,7 +684,10 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
             logger.error("Cannot continue, sampling errors detected, model is probably corrupt")
             sys.exit(1)
 
-        if not server_printed_ready_message and ("The server is fired up and ready to roll!" in line or "Starting vLLM API server" in line):
+        if not server_printed_ready_message and (
+            "The server is fired up and ready to roll!" in line
+            or "Starting vLLM API server" in line
+        ):
             server_printed_ready_message = True
             last_semaphore_release = time.time()
 
@@ -689,7 +700,9 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
             # Check for negative derivative (decrease in running requests), to not overload VLLM in times of high contention
             if current_running < last_running_req and not running_reqs_decreased:
                 running_reqs_decreased = True
-                logger.info(f"Running requests decreased: {last_running_req} -> {current_running}")
+                logger.info(
+                    f"Running requests decreased: {last_running_req} -> {current_running}"
+                )
             last_running_req = current_running
 
         if match := re.search(r"(?:Waiting|Pending):\s*(\d+)", line):
@@ -705,7 +718,9 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
                 line = line.decode("utf-8").rstrip()
                 await process_line(line)
             except Exception as ex:
-                logger.warning(f"Got {ex} when reading log line from inference server, skipping")
+                logger.warning(
+                    f"Got {ex} when reading log line from inference server, skipping"
+                )
 
     async def timeout_task():
         nonlocal last_running_req, last_queue_req, peak_running_req, last_semaphore_release, running_reqs_decreased
@@ -726,7 +741,9 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
                     semaphore.release()
                     running_reqs_decreased = False  # Reset flag after release
                     last_semaphore_release = time.time()
-                    logger.info(f"Semaphore released at {last_running_req} running {last_queue_req} queued, peak: {peak_running_req})")
+                    logger.info(
+                        f"Semaphore released at {last_running_req} running {last_queue_req} queued, peak: {peak_running_req})"
+                    )
         except asyncio.CancelledError:
             pass  # Clean up if the task is cancelled
 
@@ -1248,7 +1265,9 @@ async def main():
             avg_pages_per_pdf = 10  # Default to 10 pages per PDF if sampling fails
 
         items_per_group = max(1, int(args.pages_per_group / avg_pages_per_pdf))
-        logger.info(f"Calculated items_per_group: {items_per_group} based on average pages per PDF: {avg_pages_per_pdf:.2f}")
+        logger.info(
+            f"Calculated items_per_group: {items_per_group} based on average pages per PDF: {avg_pages_per_pdf:.2f}"
+        )
 
         # Now call populate_queue
         await work_queue.populate_queue(pdf_work_paths, items_per_group)
@@ -1335,9 +1354,11 @@ async def main():
 
     logger.info(f"Completed pages: {total_metrics.get('completed_pages', 0):,}")
     logger.info(f"Failed pages: {total_metrics.get('failed_pages', 0):,}")
-    logger.info(
-        f"Page Failure rate: {total_metrics.get('failed_pages', 0) / max(total_metrics.get('completed_pages', 0) + total_metrics.get('failed_pages', 0), 1) * 100:.2f}%"
-    )
+    total_completed = total_metrics.get("completed_pages", 0)
+    total_failed = total_metrics.get("failed_pages", 0)
+    total_pages = max(total_completed + total_failed, 1)
+    failure_rate = (total_failed / total_pages) * 100
+    logger.info(f"Page Failure rate: {failure_rate:.2f}%")
 
     # Output finished_on_attempt statistics
     logger.info("")

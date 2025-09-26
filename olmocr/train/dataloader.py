@@ -286,7 +286,9 @@ class PDFRenderer(PipelineStep):
     def __call__(self, sample: Sample) -> Sample:
         """Render PDF to image."""
         # Render PDF to image
-        base64_png = render_pdf_to_base64png(str(sample["pdf_path"]), page_num=1, target_longest_image_dim=self.target_longest_image_dim)
+        base64_png = render_pdf_to_base64png(
+            str(sample["pdf_path"]), page_num=1, target_longest_image_dim=self.target_longest_image_dim
+        )
         png_bytes = base64.b64decode(base64_png)
         image = Image.open(BytesIO(png_bytes))
 
@@ -303,7 +305,9 @@ class StaticLengthDocumentAnchoring(PipelineStep):
     """Pipeline step that runs document anchoring on the PDF and puts in the data to be used by later prompting stages"""
 
     def __call__(self, sample: Sample) -> Sample:
-        anchor_text = get_anchor_text(sample["pdf_path"], page=1, pdf_engine="pdfreport", target_length=self.target_anchor_text_len)
+        anchor_text = get_anchor_text(
+            sample["pdf_path"], page=1, pdf_engine="pdfreport", target_length=self.target_anchor_text_len
+        )
         sample["anchor_text"] = anchor_text
         return sample
 
@@ -593,7 +597,16 @@ class AugraphyBasicAugmentations(PipelineStep):
             )
 
         ink_phase = [
-            OneOf([InkBleed(p=1), LowInkRandomLines(p=1), LowInkPeriodicLines(p=1), InkMottling(p=1), InkShifter(p=1, text_shift_scale_range=(10, 15))], p=0.2),
+            OneOf(
+                [
+                    InkBleed(p=1),
+                    LowInkRandomLines(p=1),
+                    LowInkPeriodicLines(p=1),
+                    InkMottling(p=1),
+                    InkShifter(p=1, text_shift_scale_range=(10, 15)),
+                ],
+                p=0.2,
+            ),
         ]
 
         paper_phase = [OneOf([Brightness(p=0.2), Jpeg(p=1)])]
@@ -602,7 +615,9 @@ class AugraphyBasicAugmentations(PipelineStep):
             # Empty on purpose or else augmentations are too strong
         ]
 
-        augmentation_pipeline = AugraphyPipeline(ink_phase=ink_phase, paper_phase=paper_phase, post_phase=post_phase)
+        augmentation_pipeline = AugraphyPipeline(
+            ink_phase=ink_phase, paper_phase=paper_phase, post_phase=post_phase
+        )
 
         # Apply augmentations
         augmented_image_bgr = augmentation_pipeline(image_bgr)
@@ -766,7 +781,9 @@ class RandomTokenFlipper(PipelineStep):
 class MarkdownPDFDocumentDataset(BaseMarkdownPDFDataset):
     """Dataset that includes front matter parsing and PDF rendering by default."""
 
-    def __init__(self, root_dir: str | PathLike, target_longest_image_dim: int, front_matter_class=None):
+    def __init__(
+        self, root_dir: str | PathLike, target_longest_image_dim: int, front_matter_class=None
+    ):
         """
         Initialize the dataset with default pipeline steps.
 

@@ -630,7 +630,9 @@ def generate_tests_from_html(html_content: str, pdf_id: str, page_num: int, verb
     # Add a few random ordering tests
     all_indexes = list(range(len(sentences)))
     random.shuffle(all_indexes)
-    random_pairs = [(all_indexes[i * 2], all_indexes[i * 2 + 1]) for i in range(len(all_indexes) // 2)]
+    random_pairs = [
+        (all_indexes[i * 2], all_indexes[i * 2 + 1]) for i in range(len(all_indexes) // 2)
+    ]
     random_pairs = [(min(i, j), max(i, j)) for (i, j) in random_pairs]
 
     num_order_tests = 0
@@ -675,7 +677,18 @@ def generate_tests_from_html(html_content: str, pdf_id: str, page_num: int, verb
     tests = [t for t in tests if t["type"] != "absent" or t["text"] not in full_text]
 
     # Remove any tests where text-based fields have no alphanumeric characters, contain LaTeX, or contain Unicode super/subscripts
-    text_fields = ["text", "cell", "before", "after", "up", "down", "left", "right", "top_heading", "left_heading"]
+    text_fields = [
+        "text",
+        "cell",
+        "before",
+        "after",
+        "up",
+        "down",
+        "left",
+        "right",
+        "top_heading",
+        "left_heading",
+    ]
 
     def contains_alphanumeric(value):
         return any(c.isalnum() for c in value) if isinstance(value, str) else False

@@ -253,13 +253,12 @@ def get_document_info_from_line(line, file_path, line_index):
             return None
 
         # Just use the first page for each document
-        if page_spans:
-            page_span = page_spans[0]  # Just get the first page
-            if len(page_span) >= 3:
-                # Page spans are [start_pos, end_pos, page_num]
-                page_num = page_span[2]
+        page_span = page_spans[0]  # Just get the first page
+        if len(page_span) >= 3:
+            # Page spans are [start_pos, end_pos, page_num]
+            page_num = page_span[2]
 
-                # Extract text for this page
+            # Extract text for this page
                 start_pos, end_pos = page_span[0], page_span[1]
                 page_text = doc["text"][start_pos:end_pos].strip()
 
@@ -330,40 +329,40 @@ def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api
         client = OpenAI(api_key=openai_api_key)
 
         # Prepare the user message with all instructions - Keep exact prompt from autoscan_dolmadocs.py
-        user_message = """
-You are a document analyzer that identifies Personally Identifiable Information (PII) in documents. 
-Your task is to analyze the provided document image and determine:
-1. Whether the document is intended for public release or dissemination (e.g., research paper, public report, etc.)
-2. If the document contains any PII
-
-For PII identification, follow these specific guidelines:
-
-IDENTIFIERS FOR PII:
-The following are considered identifiers that can make information PII:
-- Names (full names, first names, last names, nicknames)
-- Email addresses
-- Phone numbers
-
-PII THAT MUST CO-OCCUR WITH AN IDENTIFIER:
-The following types of information should ONLY be marked as PII if they occur ALONGSIDE an identifier (commonly, a person's name):
-- Addresses (street address, postal code, etc.)
-- Biographical Information (date of birth, place of birth, gender, sexual orientation, race, ethnicity, citizenship/immigration status, religion)
-- Location Information (geolocations, specific coordinates)
-- Employment Information (job titles, workplace names, employment history)
-- Education Information (school names, degrees, transcripts)
-- Medical Information (health records, diagnoses, genetic or neural data)
-
-PII THAT OCCURS EVEN WITHOUT AN IDENTIFIER:
-The following should ALWAYS be marked as PII even if they do not occur alongside an identifier:
-- Government IDs (Social Security Numbers, passport numbers, driver's license numbers, tax IDs)
-- Financial Information (credit card numbers, bank account/routing numbers)
-- Biometric Data (fingerprints, retina scans, facial recognition data, voice signatures)
-- Login information (ONLY mark as PII when a username, password, and login location are present together)
-
-If the document is a form, then only consider fields which are filled out with specific values as potential PII.
-If this page does not itself contain PII, but references documents (such as curriculum vitae, personal statements) that typically contain PII, then do not mark it as PII.
-Only consider actual occurrences of the PII within the document shown.
-"""
+        user_message = (
+            "You are a document analyzer that identifies Personally Identifiable Information (PII) in documents. "
+            "Your task is to analyze the provided document image and determine:\n"
+            "1. Whether the document is intended for public release or dissemination (e.g., research paper, public report, etc.)\n"
+            "2. If the document contains any PII\n"
+            "\n"
+            "For PII identification, follow these specific guidelines:\n"
+            "\n"
+            "IDENTIFIERS FOR PII:\n"
+            "The following are considered identifiers that can make information PII:\n"
+            "- Names (full names, first names, last names, nicknames)\n"
+            "- Email addresses\n"
+            "- Phone numbers\n"
+            "\n"
+            "PII THAT MUST CO-OCCUR WITH AN IDENTIFIER:\n"
+            "The following types of information should ONLY be marked as PII if they occur ALONGSIDE an identifier (commonly, a person's name):\n"
+            "- Addresses (street address, postal code, etc.)\n"
+            "- Biographical Information (date of birth, place of birth, gender, sexual orientation, race, ethnicity, citizenship/immigration status, religion)\n"
+            "- Location Information (geolocations, specific coordinates)\n"
+            "- Employment Information (job titles, workplace names, employment history)\n"
+            "- Education Information (school names, degrees, transcripts)\n"
+            "- Medical Information (health records, diagnoses, genetic or neural data)\n"
+            "\n"
+            "PII THAT OCCURS EVEN WITHOUT AN IDENTIFIER:\n"
+            "The following should ALWAYS be marked as PII even if they do not occur alongside an identifier:\n"
+            "- Government IDs (Social Security Numbers, passport numbers, driver's license numbers, tax IDs)\n"
+            "- Financial Information (credit card numbers, bank account/routing numbers)\n"
+            "- Biometric Data (fingerprints, retina scans, facial recognition data, voice signatures)\n"
+            "- Login information (ONLY mark as PII when a username, password, and login location are present together)\n"
+            "\n"
+            "If the document is a form, then only consider fields which are filled out with specific values as potential PII.\n"
+            "If this page does not itself contain PII, but references documents (such as curriculum vitae, personal statements) that typically contain PII, then do not mark it as PII.\n"
+            "Only consider actual occurrences of the PII within the document shown."
+        )
 
         # Use the chat completions API with the custom schema
         completion = client.beta.chat.completions.parse(
@@ -371,7 +370,13 @@ Only consider actual occurrences of the PII within the document shown.
             messages=[
                 {
                     "role": "user",
-                    "content": [{"type": "text", "text": user_message}, {"type": "image_url", "image_url": {"url": f"data:image/webp;base64,{base64_image}"}}],
+                    "content": [
+                        {"type": "text", "text": user_message},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/webp;base64,{base64_image}"},
+                        },
+                    ],
                 }
             ],
             response_format=PIIAnnotation,

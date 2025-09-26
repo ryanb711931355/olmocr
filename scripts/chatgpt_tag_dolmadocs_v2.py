@@ -282,7 +282,13 @@ def get_all_pages(s3_client, document_files):
     return file_contents
 
 
-def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api_key: str, openai_model: str) -> Optional[DocumentClassification]:
+def chatgpt_analyze_page(
+    pdf_path: str,
+    page_num: int,
+    pdf_s3_client,
+    openai_api_key: str,
+    openai_model: str,
+) -> Optional[DocumentClassification]:
     """Analyze a page using the ChatGPT vision model with structured outputs for document classification."""
     try:
         # Download PDF to temp file and render to image
@@ -302,8 +308,8 @@ def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api
         client = OpenAI(api_key=openai_api_key)
 
         # Prepare the user message with document classification instructions
-        user_message = """
-You are a document classifier that analyzes and categorizes documents. 
+        user_message = """\
+You are a document classifier that analyzes and categorizes documents.
 Your task is to analyze the provided document image and determine if it belongs to any of the following categories:
 
 DOCUMENT CATEGORIES:
@@ -339,7 +345,13 @@ Only classify the document based on what you can observe in the provided image, 
             messages=[
                 {
                     "role": "user",
-                    "content": [{"type": "text", "text": user_message}, {"type": "image_url", "image_url": {"url": f"data:image/webp;base64,{base64_image}"}}],
+                    "content": [
+                        {"type": "text", "text": user_message},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/webp;base64,{base64_image}"},
+                        },
+                    ],
                 }
             ],
             response_format=DocumentClassification,
@@ -400,22 +412,48 @@ def process_single_page(args, doc_info, pdf_s3_client=None):
     # Initialize result attributes with all DocumentClassification fields
     result_attributes = {
         language_key_name: [[start_pos, end_pos, classification.language_code.name]],
-        f"{model_prefix}_document_types": [[start_pos, end_pos, ",".join(classification.get_document_types)]],
-        f"{model_prefix}_is_academic_paper": [[start_pos, end_pos, classification.is_academic_paper]],
+        f"{model_prefix}_document_types": [
+            [start_pos, end_pos, ",".join(classification.get_document_types)]
+        ],
+        f"{model_prefix}_is_academic_paper": [
+            [start_pos, end_pos, classification.is_academic_paper]
+        ],
         f"{model_prefix}_is_textbook": [[start_pos, end_pos, classification.is_textbook]],
-        f"{model_prefix}_is_news_article": [[start_pos, end_pos, classification.is_news_article]],
-        f"{model_prefix}_is_test_or_quiz": [[start_pos, end_pos, classification.is_test_or_quiz]],
-        f"{model_prefix}_is_homework_assignment": [[start_pos, end_pos, classification.is_homework_assignment]],
-        f"{model_prefix}_is_class_syllabus": [[start_pos, end_pos, classification.is_class_syllabus]],
-        f"{model_prefix}_is_meeting_minutes": [[start_pos, end_pos, classification.is_meeting_minutes]],
-        f"{model_prefix}_is_legal_contract": [[start_pos, end_pos, classification.is_legal_contract]],
+        f"{model_prefix}_is_news_article": [
+            [start_pos, end_pos, classification.is_news_article]
+        ],
+        f"{model_prefix}_is_test_or_quiz": [
+            [start_pos, end_pos, classification.is_test_or_quiz]
+        ],
+        f"{model_prefix}_is_homework_assignment": [
+            [start_pos, end_pos, classification.is_homework_assignment]
+        ],
+        f"{model_prefix}_is_class_syllabus": [
+            [start_pos, end_pos, classification.is_class_syllabus]
+        ],
+        f"{model_prefix}_is_meeting_minutes": [
+            [start_pos, end_pos, classification.is_meeting_minutes]
+        ],
+        f"{model_prefix}_is_legal_contract": [
+            [start_pos, end_pos, classification.is_legal_contract]
+        ],
         f"{model_prefix}_is_form": [[start_pos, end_pos, classification.is_form]],
-        f"{model_prefix}_is_correspondence_or_letter": [[start_pos, end_pos, classification.is_correspondence_or_letter]],
-        f"{model_prefix}_is_public_order": [[start_pos, end_pos, classification.is_public_order]],
-        f"{model_prefix}_is_court_notice": [[start_pos, end_pos, classification.is_court_notice]],
-        f"{model_prefix}_classification_notes": [[start_pos, end_pos, classification.classification_notes]],
+        f"{model_prefix}_is_correspondence_or_letter": [
+            [start_pos, end_pos, classification.is_correspondence_or_letter]
+        ],
+        f"{model_prefix}_is_public_order": [
+            [start_pos, end_pos, classification.is_public_order]
+        ],
+        f"{model_prefix}_is_court_notice": [
+            [start_pos, end_pos, classification.is_court_notice]
+        ],
+        f"{model_prefix}_classification_notes": [
+            [start_pos, end_pos, classification.classification_notes]
+        ],
         f"{model_prefix}_cannot_read": [[start_pos, end_pos, classification.cannot_read]],
-        f"{model_prefix}_inappropriate_content": [[start_pos, end_pos, classification.inappropriate_content]],
+        f"{model_prefix}_inappropriate_content": [
+            [start_pos, end_pos, classification.inappropriate_content]
+        ],
     }
 
     # Return document ID, line index, and attributes
@@ -449,7 +487,9 @@ def write_attribute_file(args, processed_docs, file_documents, workspace_s3):
             if source_file.startswith("s3://"):
                 _, key = parse_s3_path(source_file)
                 _, docs_prefix = parse_s3_path(args.workspace)
-                rel_path = key[len(os.path.join(docs_prefix, "documents/")) :]
+                rel_path = key[
+                    len(os.path.join(docs_prefix, "documents/")) :
+                ]
             else:
                 docs_root = os.path.join(args.workspace, "documents")
                 rel_path = os.path.relpath(source_file, docs_root)
@@ -491,13 +531,17 @@ def write_attribute_file(args, processed_docs, file_documents, workspace_s3):
                 bucket, prefix = parse_s3_path(args.workspace)
                 key = os.path.join(prefix, out_rel)
                 workspace_s3.put_object(Bucket=bucket, Key=key, Body=payload)
-                logger.info(f"Wrote {len(file_entries)} attribute entries to s3://{bucket}/{key}")
+                logger.info(
+                    f"Wrote {len(file_entries)} attribute entries to s3://{bucket}/{key}"
+                )
             else:
                 out_path = os.path.join(args.workspace, out_rel)
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
                 with open(out_path, "wb") as fh:
                     fh.write(payload)
-                logger.info(f"Wrote {len(file_entries)} attribute entries to {out_path}")
+                logger.info(
+                    f"Wrote {len(file_entries)} attribute entries to {out_path}"
+                )
 
         except Exception as e:
             logger.error(f"Error writing attributes for {source_file}: {e}")

@@ -275,7 +275,9 @@ async def apost(url, json_data):
             body_length = int(headers["content-length"])
             response_body = await reader.readexactly(body_length)
         else:
-            raise ConnectionError("Anything other than fixed content length responses are not implemented yet")
+            raise ConnectionError(
+                "Anything other than fixed content length responses are not implemented yet"
+            )
 
         return status_code, response_body
     except Exception as e:
@@ -287,7 +289,7 @@ async def apost(url, json_data):
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
@@ -359,17 +361,39 @@ async def process_dolma_document(args, dolma_doc, sem):
                     pii_class = await _process_single_page(page_text)
 
                 # Add all attributes from RichPIIClassification
-                result_attributes[contains_pii_key_name].append([start_pos, end_pos, pii_class.contains_any_pii()])
-                result_attributes[language_key_name].append([start_pos, end_pos, pii_class.primary_language])
-                result_attributes[f"{model_prefix}_is_public_document"].append([start_pos, end_pos, pii_class.is_public_document])
-                result_attributes[f"{model_prefix}_contains_pii_government_id"].append([start_pos, end_pos, pii_class.contains_pii_government_id])
-                result_attributes[f"{model_prefix}_contains_pii_financial_info"].append([start_pos, end_pos, pii_class.contains_pii_financial_info])
-                result_attributes[f"{model_prefix}_contains_pii_biometric_data"].append([start_pos, end_pos, pii_class.contains_pii_biometric_data])
-                result_attributes[f"{model_prefix}_contains_pii_login_info"].append([start_pos, end_pos, pii_class.contains_pii_login_info])
-                result_attributes[f"{model_prefix}_contains_identifier_name"].append([start_pos, end_pos, pii_class.contains_identifier_name])
-                result_attributes[f"{model_prefix}_contains_identifier_email"].append([start_pos, end_pos, pii_class.contains_identifier_email])
-                result_attributes[f"{model_prefix}_contains_identifier_phone_number"].append([start_pos, end_pos, pii_class.contains_identifier_phone_number])
-                result_attributes[f"{model_prefix}_contains_identifier_with_address"].append([start_pos, end_pos, pii_class.contains_identifier_with_address])
+                result_attributes[contains_pii_key_name].append(
+                    [start_pos, end_pos, pii_class.contains_any_pii()]
+                )
+                result_attributes[language_key_name].append(
+                    [start_pos, end_pos, pii_class.primary_language]
+                )
+                result_attributes[f"{model_prefix}_is_public_document"].append(
+                    [start_pos, end_pos, pii_class.is_public_document]
+                )
+                result_attributes[f"{model_prefix}_contains_pii_government_id"].append(
+                    [start_pos, end_pos, pii_class.contains_pii_government_id]
+                )
+                result_attributes[f"{model_prefix}_contains_pii_financial_info"].append(
+                    [start_pos, end_pos, pii_class.contains_pii_financial_info]
+                )
+                result_attributes[f"{model_prefix}_contains_pii_biometric_data"].append(
+                    [start_pos, end_pos, pii_class.contains_pii_biometric_data]
+                )
+                result_attributes[f"{model_prefix}_contains_pii_login_info"].append(
+                    [start_pos, end_pos, pii_class.contains_pii_login_info]
+                )
+                result_attributes[f"{model_prefix}_contains_identifier_name"].append(
+                    [start_pos, end_pos, pii_class.contains_identifier_name]
+                )
+                result_attributes[f"{model_prefix}_contains_identifier_email"].append(
+                    [start_pos, end_pos, pii_class.contains_identifier_email]
+                )
+                result_attributes[f"{model_prefix}_contains_identifier_phone_number"].append(
+                    [start_pos, end_pos, pii_class.contains_identifier_phone_number]
+                )
+                result_attributes[f"{model_prefix}_contains_identifier_with_address"].append(
+                    [start_pos, end_pos, pii_class.contains_identifier_with_address]
+                )
                 result_attributes[f"{model_prefix}_contains_identifier_with_biographical_info"].append(
                     [start_pos, end_pos, pii_class.contains_identifier_with_biographical_info]
                 )
@@ -392,7 +416,9 @@ async def process_dolma_document(args, dolma_doc, sem):
 
         return result_attributes
     else:
-        raise NotImplementedError("Missing code here, expecting this to be dolma docs made by olmocr....")
+        raise NotImplementedError(
+            "Missing code here, expecting this to be dolma docs made by olmocr...."
+        )
 
 
 async def process_file(args, worker_id: int, file_uri: str):
