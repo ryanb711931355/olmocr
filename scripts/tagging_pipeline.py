@@ -18,7 +18,6 @@ import random
 import re
 import sys
 import time
-from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
@@ -214,7 +213,7 @@ async def apost(url, json_data):
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
@@ -517,7 +516,7 @@ async def check_server_ready():
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
+        except (httpx.RequestError, httpx.HTTPStatusError):
             logger.warning(f"Attempt {attempt}: Please wait for model server to become ready...")
 
         await asyncio.sleep(delay_sec)
@@ -526,18 +525,22 @@ async def check_server_ready():
 
 
 async def download_model(model_name_or_path: str):
-    if model_name_or_path.startswith("s3://") or model_name_or_path.startswith("gs://") or model_name_or_path.startswith("weka://"):
-        logger.info(f"Downloading model directory from '{model_name_or_path}'")
-        model_cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "olmocr", "model")
-        download_directory([model_name_or_path], model_cache_dir)
-        return model_cache_dir
-    elif os.path.isabs(model_name_or_path) and os.path.isdir(model_name_or_path):
-        logger.info(f"Using local model path at '{model_name_or_path}'")
-        return model_name_or_path
-    else:
-        logger.info(f"Downloading model with hugging face '{model_name_or_path}'")
-        snapshot_download(repo_id=model_name_or_path)
-        return model_name_or_path
+    try:
+        if model_name_or_path.startswith("s3://") or model_name_or_path.startswith("gs://") or model_name_or_path.startswith("weka://"):
+            logger.info(f"Downloading model directory from '{model_name_or_path}'")
+            model_cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "olmocr", "model")
+            download_directory([model_name_or_path], model_cache_dir)
+            return model_cache_dir
+        elif os.path.isabs(model_name_or_path) and os.path.isdir(model_name_or_path):
+            logger.info(f"Using local model path at '{model_name_or_path}'")
+            return model_name_or_path
+        else:
+            logger.info(f"Downloading model with hugging face '{model_name_or_path}'")
+            snapshot_download(repo_id=model_name_or_path)
+            return model_name_or_path
+    except Exception as e:
+        logger.error(f"Failed to download model '{model_name_or_path}': {e}")
+        raise
 
 
 async def metrics_reporter(work_queue):
@@ -563,215 +566,223 @@ def submit_beaker_job(args):
         TaskSpec,
     )
 
-    b = Beaker.from_env(default_workspace=args.beaker_workspace)
-    account = b.account.whoami()
-    owner = account.name
-    beaker_image = f"jakep/olmocr-tagging-{VERSION}"
-
-    task_name = f"olmocr-{os.path.basename(args.dataset.rstrip('/'))}"
-
-    # Take out --beaker flag so the workers will just run things
-    args_list = [arg for arg in sys.argv[1:] if arg != "--beaker"]
-
-    # Take out the --pdfs [arg] or --pdfs=[arg], since the queue is populated locally
-    args_list = [arg for i, arg in enumerate(args_list) if not (arg.startswith("--pdfs") or (i > 0 and args_list[i - 1] == "--pdfs"))]
-
     try:
-        b.secret.get(f"{owner}-WEKA_ACCESS_KEY_ID", args.beaker_workspace)
-        b.secret.get(f"{owner}-WEKA_SECRET_ACCESS_KEY", args.beaker_workspace)
-        b.secret.get(f"{owner}-AWS_CREDENTIALS_FILE", args.beaker_workspace)
-    except SecretNotFound:
-        print(
-            f"Expected beaker secrets for accessing Weka and S3 are not found. Are you okay to write those to your beaker workspace {args.beaker_workspace}? [y/n]"
-        )
+        b = Beaker.from_env(default_workspace=args.beaker_workspace)
+        account = b.account.whoami()
+        owner = account.name
+        beaker_image = f"jakep/olmocr-tagging-{VERSION}"
 
-        if input().strip().lower() != "y":
-            print("Exiting...")
-            sys.exit(1)
+        task_name = f"olmocr-{os.path.basename(args.dataset.rstrip('/'))}"
 
-        b.secret.write(f"{owner}-WEKA_ACCESS_KEY_ID", os.environ.get("WEKA_ACCESS_KEY_ID", ""), args.beaker_workspace)
-        b.secret.write(f"{owner}-WEKA_SECRET_ACCESS_KEY", os.environ.get("WEKA_SECRET_ACCESS_KEY", ""), args.beaker_workspace)
-        b.secret.write(
-            f"{owner}-AWS_CREDENTIALS_FILE",
-            open(os.path.join(os.path.expanduser("~"), ".aws", "credentials")).read(),
-            args.beaker_workspace,
-        )
+        # Take out --beaker flag so the workers will just run things
+        args_list = [arg for arg in sys.argv[1:] if arg != "--beaker"]
 
-    env_var_secrets = [
-        EnvVar(name="WEKA_ACCESS_KEY_ID", secret=f"{owner}-WEKA_ACCESS_KEY_ID"),
-        EnvVar(name="WEKA_SECRET_ACCESS_KEY", secret=f"{owner}-WEKA_SECRET_ACCESS_KEY"),
-        EnvVar(name="AWS_CREDENTIALS_FILE", secret=f"{owner}-AWS_CREDENTIALS_FILE"),
-    ]
+        # Take out the --pdfs [arg] or --pdfs=[arg], since the queue is populated locally
+        args_list = [arg for i, arg in enumerate(args_list) if not (arg.startswith("--pdfs") or (i > 0 and args_list[i - 1] == "--pdfs"))]
 
-    try:
-        b.secret.get("OLMOCR_PREVIEW_HF_TOKEN", args.beaker_workspace)
-        env_var_secrets.append(EnvVar(name="HF_TOKEN", secret="OLMOCR_PREVIEW_HF_TOKEN"))
-    except SecretNotFound:
-        pass
-
-    try:
-        b.secret.get("OE_DATA_GCS_SA_KEY", args.beaker_workspace)
-        env_var_secrets.append(EnvVar(name="GOOGLE_APPLICATION_CREDENTIALS_FILE", secret="OE_DATA_GCS_SA_KEY"))
-    except SecretNotFound:
-        print("Input the olmo-gcs SA key if you would like to load weights from gcs (end with a double newline):")
-        lines = []
-        prev_empty = False
-        for line in iter(input, None):
-            if not line and prev_empty:
-                break
-            prev_empty = not line
-            lines.append(line)
-        gcs_sa_key = "\n".join(lines[:-1]).strip()  # Remove the last empty line
-        if gcs_sa_key:
-            b.secret.write("OE_DATA_GCS_SA_KEY", gcs_sa_key, args.beaker_workspace)
-            env_var_secrets.append(EnvVar(name="GOOGLE_APPLICATION_CREDENTIALS_FILE", secret="OE_DATA_GCS_SA_KEY"))
-
-    # Create the experiment spec
-    experiment_spec = ExperimentSpec(
-        budget="ai2/oe-base",
-        description=task_name,
-        tasks=[
-            TaskSpec(
-                name=task_name,
-                propagate_failure=False,
-                propagate_preemption=False,
-                replicas=args.beaker_gpus,
-                context=TaskContext(
-                    priority=Priority(args.beaker_priority),
-                    preemptible=True,
-                ),
-                image=ImageSource(beaker=beaker_image),
-                command=["python", "scripts/tagging_pipeline.py"] + args_list,
-                env_vars=[EnvVar(name="BEAKER_JOB_NAME", value=task_name), EnvVar(name="OWNER", value=owner)] + env_var_secrets,
-                resources=TaskResources(gpu_count=1),
-                constraints=Constraints(cluster=args.beaker_cluster if isinstance(args.beaker_cluster, list) else [args.beaker_cluster]),
-                result=ResultSpec(path="/noop-results"),
+        try:
+            b.secret.get(f"{owner}-WEKA_ACCESS_KEY_ID", args.beaker_workspace)
+            b.secret.get(f"{owner}-WEKA_SECRET_ACCESS_KEY", args.beaker_workspace)
+            b.secret.get(f"{owner}-AWS_CREDENTIALS_FILE", args.beaker_workspace)
+        except SecretNotFound:
+            print(
+                f"Expected beaker secrets for accessing Weka and S3 are not found. Are you okay to write those to your beaker workspace {args.beaker_workspace}? [y/n]"
             )
-        ],
-    )
 
-    experiment_data = b.experiment.create(spec=experiment_spec, workspace=args.beaker_workspace)
+            if input().strip().lower() != "y":
+                print("Exiting...")
+                sys.exit(1)
 
-    print(f"Experiment URL: https://beaker.org/ex/{experiment_data.id}")
+            b.secret.write(f"{owner}-WEKA_ACCESS_KEY_ID", os.environ.get("WEKA_ACCESS_KEY_ID", ""), args.beaker_workspace)
+            b.secret.write(f"{owner}-WEKA_SECRET_ACCESS_KEY", os.environ.get("WEKA_SECRET_ACCESS_KEY", ""), args.beaker_workspace)
+            b.secret.write(
+                f"{owner}-AWS_CREDENTIALS_FILE",
+                open(os.path.join(os.path.expanduser("~"), ".aws", "credentials")).read(),
+                args.beaker_workspace,
+            )
+
+        env_var_secrets = [
+            EnvVar(name="WEKA_ACCESS_KEY_ID", secret=f"{owner}-WEKA_ACCESS_KEY_ID"),
+            EnvVar(name="WEKA_SECRET_ACCESS_KEY", secret=f"{owner}-WEKA_SECRET_ACCESS_KEY"),
+            EnvVar(name="AWS_CREDENTIALS_FILE", secret=f"{owner}-AWS_CREDENTIALS_FILE"),
+        ]
+
+        try:
+            b.secret.get("OLMOCR_PREVIEW_HF_TOKEN", args.beaker_workspace)
+            env_var_secrets.append(EnvVar(name="HF_TOKEN", secret="OLMOCR_PREVIEW_HF_TOKEN"))
+        except SecretNotFound:
+            pass
+
+        try:
+            b.secret.get("OE_DATA_GCS_SA_KEY", args.beaker_workspace)
+            env_var_secrets.append(EnvVar(name="GOOGLE_APPLICATION_CREDENTIALS_FILE", secret="OE_DATA_GCS_SA_KEY"))
+        except SecretNotFound:
+            print("Input the olmo-gcs SA key if you would like to load weights from gcs (end with a double newline):")
+            lines = []
+            prev_empty = False
+            for line in iter(input, None):
+                if not line and prev_empty:
+                    break
+                prev_empty = not line
+                lines.append(line)
+            gcs_sa_key = "\n".join(lines[:-1]).strip()  # Remove the last empty line
+            if gcs_sa_key:
+                b.secret.write("OE_DATA_GCS_SA_KEY", gcs_sa_key, args.beaker_workspace)
+                env_var_secrets.append(EnvVar(name="GOOGLE_APPLICATION_CREDENTIALS_FILE", secret="OE_DATA_GCS_SA_KEY"))
+
+        # Create the experiment spec
+        experiment_spec = ExperimentSpec(
+            budget="ai2/oe-base",
+            description=task_name,
+            tasks=[
+                TaskSpec(
+                    name=task_name,
+                    propagate_failure=False,
+                    propagate_preemption=False,
+                    replicas=args.beaker_gpus,
+                    context=TaskContext(
+                        priority=Priority(args.beaker_priority),
+                        preemptible=True,
+                    ),
+                    image=ImageSource(beaker=beaker_image),
+                    command=["python", "scripts/tagging_pipeline.py"] + args_list,
+                    env_vars=[EnvVar(name="BEAKER_JOB_NAME", value=task_name), EnvVar(name="OWNER", value=owner)] + env_var_secrets,
+                    resources=TaskResources(gpu_count=1),
+                    constraints=Constraints(cluster=args.beaker_cluster if isinstance(args.beaker_cluster, list) else [args.beaker_cluster]),
+                    result=ResultSpec(path="/noop-results"),
+                )
+            ],
+        )
+
+        experiment_data = b.experiment.create(spec=experiment_spec, workspace=args.beaker_workspace)
+
+        print(f"Experiment URL: https://beaker.org/ex/{experiment_data.id}")
+    except Exception as e:
+        logger.error(f"Failed to submit Beaker job: {e}")
+        raise
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Tagging pipeline for Dolma JSONL dataset")
-    parser.add_argument("dataset", help="Dolma dataset root (local or s3://) with documents/ folder")
-    parser.add_argument("scratch", help="Scratch workspace (local dir or s3://)")
-    parser.add_argument("--workers", type=int, default=4, help="Number of concurrent workers")
-    parser.add_argument("--parallel_requests", type=int, default=800, help="Max number of parallel requests to send to model")
-    parser.add_argument("--model", default="google/gemma-3-4b-it", help="Model path or name, hugging face or local path format")
-    parser.add_argument("--attribute_name", default="model_pii_tagging", help="Path to use for attribute naming")
+    try:
+        parser = argparse.ArgumentParser(description="Tagging pipeline for Dolma JSONL dataset")
+        parser.add_argument("dataset", help="Dolma dataset root (local or s3://) with documents/ folder")
+        parser.add_argument("scratch", help="Scratch workspace (local dir or s3://)")
+        parser.add_argument("--workers", type=int, default=4, help="Number of concurrent workers")
+        parser.add_argument("--parallel_requests", type=int, default=800, help="Max number of parallel requests to send to model")
+        parser.add_argument("--model", default="google/gemma-3-4b-it", help="Model path or name, hugging face or local path format")
+        parser.add_argument("--attribute_name", default="model_pii_tagging", help="Path to use for attribute naming")
 
-    # Beaker/job running stuff
-    parser.add_argument("--beaker", action="store_true", help="Submit this job to beaker instead of running locally")
-    parser.add_argument("--beaker_workspace", help="Beaker workspace to submit to", default="ai2/olmocr")
-    parser.add_argument(
-        "--beaker_cluster",
-        help="Beaker clusters you want to run on",
-        default=["ai2/jupiter-cirrascale-2", "ai2/ceres-cirrascale", "ai2/neptune-cirrascale", "ai2/saturn-cirrascale", "ai2/augusta-google-1"],
-    )
-    parser.add_argument("--beaker_gpus", type=int, default=1, help="Number of gpu replicas to run")
-    parser.add_argument("--beaker_priority", type=str, default="normal", help="Beaker priority level for the job")
+        # Beaker/job running stuff
+        parser.add_argument("--beaker", action="store_true", help="Submit this job to beaker instead of running locally")
+        parser.add_argument("--beaker_workspace", help="Beaker workspace to submit to", default="ai2/olmocr")
+        parser.add_argument(
+            "--beaker_cluster",
+            help="Beaker clusters you want to run on",
+            default=["ai2/jupiter-cirrascale-2", "ai2/ceres-cirrascale", "ai2/neptune-cirrascale", "ai2/saturn-cirrascale", "ai2/augusta-google-1"],
+        )
+        parser.add_argument("--beaker_gpus", type=int, default=1, help="Number of gpu replicas to run")
+        parser.add_argument("--beaker_priority", type=str, default="normal", help="Beaker priority level for the job")
 
-    parser.add_argument("--port", type=int, default=30024, help="Port for Model server")
-    args = parser.parse_args()
+        parser.add_argument("--port", type=int, default=30024, help="Port for Model server")
+        args = parser.parse_args()
 
-    global SERVER_PORT, workspace_s3, dataset_s3
-    SERVER_PORT = args.port
-    workspace_s3 = boto3.client("s3")
-    dataset_s3 = boto3.client("s3")
-
-    # setup the job to work in beaker environment, load secrets, adjust logging, etc.
-    if "BEAKER_JOB_ID" in os.environ:
-        server_logger.addHandler(console_handler)
-        if "AWS_CREDENTIALS_FILE" in os.environ:
-            cred_path = os.path.join(os.path.expanduser("~"), ".aws", "credentials")
-            os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-            with open(cred_path, "w") as f:
-                f.write(os.environ.get("AWS_CREDENTIALS_FILE"))
-        if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
-            cred_path = os.path.join(os.path.expanduser("~"), ".gcs", "credentials")
-            os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-            with open(cred_path, "w") as f:
-                f.write(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE"))
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
+        global SERVER_PORT, workspace_s3, dataset_s3
+        SERVER_PORT = args.port
         workspace_s3 = boto3.client("s3")
         dataset_s3 = boto3.client("s3")
 
-        # Wait a little bit so that not all beaker jobs in a task start at the same time and download the model at the same time
-        replica_count = int(os.environ.get("BEAKER_REPLICA_COUNT", "1"))
-        interval = 10 if (replica_count - 1) * 10 <= 240 else 240 / max(1, replica_count - 1)
-        sleep_time = int(int(os.environ.get("BEAKER_REPLICA_RANK", "0")) * interval)
-        logger.info(f"Beaker job sleeping for {sleep_time} seconds to stagger model downloads")
-        await asyncio.sleep(sleep_time)
+        # setup the job to work in beaker environment, load secrets, adjust logging, etc.
+        if "BEAKER_JOB_ID" in os.environ:
+            server_logger.addHandler(console_handler)
+            if "AWS_CREDENTIALS_FILE" in os.environ:
+                cred_path = os.path.join(os.path.expanduser("~"), ".aws", "credentials")
+                os.makedirs(os.path.dirname(cred_path), exist_ok=True)
+                with open(cred_path, "w") as f:
+                    f.write(os.environ.get("AWS_CREDENTIALS_FILE"))
+            if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+                cred_path = os.path.join(os.path.expanduser("~"), ".gcs", "credentials")
+                os.makedirs(os.path.dirname(cred_path), exist_ok=True)
+                with open(cred_path, "w") as f:
+                    f.write(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE"))
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
+            workspace_s3 = boto3.client("s3")
+            dataset_s3 = boto3.client("s3")
 
-    # Initialize work queue
-    if args.scratch.startswith("s3://"):
-        work_queue = S3WorkQueue(workspace_s3, args.scratch)
-    else:
-        work_queue = LocalWorkQueue(args.scratch)
+            # Wait a little bit so that not all beaker jobs in a task start at the same time and download the model at the same time
+            replica_count = int(os.environ.get("BEAKER_REPLICA_COUNT", "1"))
+            interval = 10 if (replica_count - 1) * 10 <= 240 else 240 / max(1, replica_count - 1)
+            sleep_time = int(int(os.environ.get("BEAKER_REPLICA_RANK", "0")) * interval)
+            logger.info(f"Beaker job sleeping for {sleep_time} seconds to stagger model downloads")
+            await asyncio.sleep(sleep_time)
 
-    # Discover input files
-    files = set()
-    if args.dataset.startswith("s3://"):
-        pattern = args.dataset.rstrip("/") + "/documents/*.jsonl*"
-        matched = expand_s3_glob(dataset_s3, pattern)
-        files = set(matched.keys())
-    else:
-        docs_dir = os.path.join(args.dataset, "documents")
-        for root, _, fns in os.walk(docs_dir):
-            for fn in fns:
-                if fn.endswith((".jsonl", ".jsonl.gz", ".jsonl.ztd")):
-                    files.add(os.path.join(root, fn))
+        # Initialize work queue
+        if args.scratch.startswith("s3://"):
+            work_queue = S3WorkQueue(workspace_s3, args.scratch)
+        else:
+            work_queue = LocalWorkQueue(args.scratch)
 
-    # Populate the work queue if needed
-    await work_queue.populate_queue(list(files), items_per_group=1)
+        # Discover input files
+        files = set()
+        if args.dataset.startswith("s3://"):
+            pattern = args.dataset.rstrip("/") + "/documents/*.jsonl*"
+            matched = expand_s3_glob(dataset_s3, pattern)
+            files = set(matched.keys())
+        else:
+            docs_dir = os.path.join(args.dataset, "documents")
+            for root, _, fns in os.walk(docs_dir):
+                for fn in fns:
+                    if fn.endswith((".jsonl", ".jsonl.gz", ".jsonl.ztd")):
+                        files.add(os.path.join(root, fn))
 
-    if args.beaker:
-        submit_beaker_job(args)
-        return
+        # Populate the work queue if needed
+        await work_queue.populate_queue(list(files), items_per_group=1)
 
-    # If you get this far, then you are doing inference and need a GPU
-    check_torch_gpu_available()
+        if args.beaker:
+            submit_beaker_job(args)
+            return
 
-    logger.info(f"Starting pipeline with PID {os.getpid()}")
+        # If you get this far, then you are doing inference and need a GPU
+        check_torch_gpu_available()
 
-    # Download the model before you do anything else
-    model_name_or_path = await download_model(args.model)
+        logger.info(f"Starting pipeline with PID {os.getpid()}")
 
-    # Initialize the work queue
-    qsize = await work_queue.initialize_queue()
+        # Download the model before you do anything else
+        model_name_or_path = await download_model(args.model)
 
-    if qsize == 0:
-        logger.info("No work to do, exiting")
-        return
+        # Initialize the work queue
+        qsize = await work_queue.initialize_queue()
 
-    # Create a semaphore to control worker access
-    # We only allow one worker to move forward with requests, until the server has no more requests in its queue
-    # This lets us get full utilization by having many workers, but also to be outputting dolma docs as soon as possible
-    # As soon as one worker is no longer saturating the gpu, the next one can start sending requests
-    semaphore = asyncio.Semaphore(1)
+        if qsize == 0:
+            logger.info("No work to do, exiting")
+            return
 
-    model_server = asyncio.create_task(server_host(model_name_or_path, args, semaphore))
+        # Create a semaphore to control worker access
+        # We only allow one worker to move forward with requests, until the server has no more requests in its queue
+        # This lets us get full utilization by having many workers, but also to be outputting dolma docs as soon as possible
+        # As soon as one worker is no longer saturating the gpu, the next one can start sending requests
+        semaphore = asyncio.Semaphore(1)
 
-    await check_server_ready()
+        model_server = asyncio.create_task(server_host(model_name_or_path, args, semaphore))
 
-    metrics_task = asyncio.create_task(metrics_reporter(work_queue))
+        await check_server_ready()
 
-    # Create worker tasks to process the queue concurrently.
-    worker_tasks = []
-    for i in range(args.workers):
-        task = asyncio.create_task(worker(args, work_queue, semaphore, worker_id=i))
-        worker_tasks.append(task)
+        metrics_task = asyncio.create_task(metrics_reporter(work_queue))
 
-    # Wait for all worker tasks to finish
-    await asyncio.gather(*worker_tasks)
+        # Create worker tasks to process the queue concurrently.
+        worker_tasks = []
+        for i in range(args.workers):
+            task = asyncio.create_task(worker(args, work_queue, semaphore, worker_id=i))
+            worker_tasks.append(task)
 
-    model_server.cancel()
-    metrics_task.cancel()
-    logger.info("Work done")
+        # Wait for all worker tasks to finish
+        await asyncio.gather(*worker_tasks)
+
+        model_server.cancel()
+        metrics_task.cancel()
+        logger.info("Work done")
+    except Exception as e:
+        logger.error(f"Pipeline failed: {e}")
+        raise
 
 
 if __name__ == "__main__":

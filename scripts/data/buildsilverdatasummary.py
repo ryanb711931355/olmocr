@@ -134,10 +134,17 @@ def main():
     db_path = cache_athena_csv_to_db(args.athena_csv)
 
     all_rows = []
-    filepaths = [os.path.join(args.input, filename) for filename in os.listdir(args.input) if filename.endswith(".jsonl")]
+    filepaths = [
+        os.path.join(args.input, filename)
+        for filename in os.listdir(args.input)
+        if filename.endswith(".jsonl")
+    ]
 
     with ProcessPoolExecutor() as executor:
-        future_to_file = {executor.submit(process_file, filepath, db_path): filepath for filepath in filepaths}
+        future_to_file = {
+            executor.submit(process_file, filepath, db_path): filepath
+            for filepath in filepaths
+        }
 
         for future in tqdm(as_completed(future_to_file), total=len(filepaths)):
             try:

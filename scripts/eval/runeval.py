@@ -235,7 +235,10 @@ def process_jsonl_file(jsonl_file, gold_data, comparer):
 
     with smart_open(jsonl_file, "r") as f:
         for line in f:
-            data = json.loads(line)
+            try:
+                data = json.loads(line)
+            except ValueError:
+                continue
 
             data = normalize_json_entry(data)
 
@@ -329,7 +332,6 @@ def do_eval(gold_data_path: str, eval_data_path: str, review_page_name: str, rev
     print(f"Found {total_errors} errors in the eval set, and {total_overruns} cases of length overruns")
     print(f"Mean page-weighted alignment: {total_alignment_score / total_pages:.3f}")
     print(f"Mean char-weighted alignment: {total_char_alignment_score / total_weight:.3f}")
-    print("")
     print("...creating review page")
 
     # TODO Temporary filter to see other stuff

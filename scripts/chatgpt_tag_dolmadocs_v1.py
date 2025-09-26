@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Rich Autoscan Dolma Documents with ChatGPT Vision
 
@@ -16,8 +15,6 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
-
 import boto3
 import pydantic
 import zstandard as zstd
@@ -123,7 +120,7 @@ class PIIAnnotation(pydantic.BaseModel):
         ]
         return any(pii_fields) or bool(self.other_pii.strip())
 
-    def get_pii_types(self) -> List[str]:
+    def get_pii_types(self) -> list[str]:
         """Get a list of all PII types found in the document"""
         pii_types = []
 
@@ -227,7 +224,7 @@ def load_document_file(s3_client, file_path):
 
         # Return the decoded lines
         return file_bytes.decode("utf-8").strip().split("\n")
-    except Exception as e:
+    except (OSError, zstandard.ZstdError, gzip.BadGzipFile, UnicodeDecodeError) as e:
         logger.error(f"Error loading file {file_path}: {e}")
         return []
 
@@ -533,7 +530,7 @@ def write_attribute_file(args, processed_docs, file_documents, workspace_s3):
                 logger.info(f"Wrote {len(file_entries)} attribute entries to {out_path}")
 
         except Exception as e:
-            logger.error(f"Error writing attributes for {source_file}: {e}")
+            logger.error(f"Error writing attributes for {source_file}: {e}", exc_info=True)
             continue
 
 
@@ -542,11 +539,7 @@ def save_results(results, output_dir):
     output_path = Path(output_dir) / "rich_autoscan_results.json"
 
     # Convert results to serializable format
-    serializable_results = []
-    for result in results:
-        if result is None:
-            continue
-        serializable_results.append(result)
+    serializable_results = [result for result in results if result is not None]
 
     with open(output_path, "w") as f:
         json.dump(serializable_results, f, indent=2, default=lambda o: o.value if isinstance(o, Enum) else o)
@@ -597,10 +590,7 @@ def main():
         logger.info(f"Processing file {file_index+1}/{len(file_documents)}: {file_path}")
 
         # Only process documents that have valid information
-        valid_docs = []
-        for doc in documents:
-            if doc is not None:
-                valid_docs.append(doc)
+        valid_docs = [doc for doc in documents if doc is not None]
 
         # Skip if no valid documents
         if not valid_docs:

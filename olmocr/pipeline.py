@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import atexit
-import base64
 import datetime
 import hashlib
 import json
@@ -216,15 +215,15 @@ async def apost(url, json_data, api_key=None):
 
         return status_code, response_body
     except Exception as e:
-        # Pass through errors
-        raise e
+        logger.exception(f"HTTP POST to {url} failed: {e}")
+        raise
     finally:
         # But just make sure to close the socket on your way out
         if writer is not None:
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
@@ -280,7 +279,7 @@ async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path:
                 api_key = args.api_key
             else:
                 api_key = None
-            status_code, response_body = await apost(COMPLETION_URL, json_data=query, api_key=api_key)
+            status_code, response_body = await apost(COMPLETION_URL, json_data=query)
 
             if status_code == 400:
                 raise ValueError(f"Got BadRequestError from server: {response_body}, skipping this response")
@@ -395,8 +394,8 @@ async def process_pdf(args, worker_id: int, pdf_orig_path: str):
         try:
             reader = PdfReader(tf.name)
             num_pages = reader.get_num_pages()
-        except:
-            logger.exception(f"Could not count number of pages for {pdf_orig_path}, aborting document")
+        except Exception as e:
+            logger.exception(f"Could not count number of pages for {pdf_orig_path}, aborting document: {e}")
             return None
 
         logger.debug(f"Got {num_pages} pages to do for {pdf_orig_path} in worker {worker_id}")
@@ -526,9 +525,10 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
             for task in dolma_tasks:
                 try:
                     result = task.result()
-                except:
+                except Exception as e:
                     # some dolma doc creations may have failed
-                    pass
+                    logger.warning(f"Task failed for {work_item.hash}: {e}")
+                    continue
 
                 if result is not None:
                     dolma_docs.append(result)
@@ -556,8 +556,11 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
                     shutil.copyfile(temp_path, output_final_path)
             finally:
                 # Clean up the temporary file
-                if os.path.exists(temp_path):
-                    os.unlink(temp_path)
+                try:
+                    if os.path.exists(temp_path):
+                        os.unlink(temp_path)
+                except OSError:
+                    pass
 
             # If --markdown flag is set, also write the natural text to markdown files
             if args.markdown:
@@ -597,8 +600,11 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
                             workspace_s3.upload_file(md_temp_path, md_bucket, md_key)
                         finally:
                             # Make sure to clean up the temporary file even if upload fails
-                            if os.path.exists(md_temp_path):
-                                os.unlink(md_temp_path)
+                            try:
+                                if os.path.exists(md_temp_path):
+                                    os.unlink(md_temp_path)
+                            except OSError:
+                                pass
                     else:
                         # For local paths, create the directory structure and write the file
                         os.makedirs(markdown_dir, exist_ok=True)
@@ -614,6 +620,7 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
             await work_queue.mark_done(work_item)
         except Exception as e:
             logger.exception(f"Exception occurred while processing work_hash {work_item.hash}: {e}")
+            await work_queue.mark_done(work_item)
         finally:
             semaphore.release()
 
@@ -656,8 +663,9 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
     # Ensure the subprocess is terminated on exit
     def _kill_proc():
         try:
-            proc.terminate()
-        except:
+            if proc.returncode is None:
+                proc.terminate()
+        except OSError:
             logger.info("VLLM Process already terminated")
 
     atexit.register(_kill_proc)
@@ -739,14 +747,14 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
         await proc.wait()
     except asyncio.CancelledError:
         logger.info("Got cancellation request for VLLM server")
-        proc.terminate()
+        timeout_task.cancel()
         try:
+            proc.terminate()
             await asyncio.wait_for(proc.wait(), timeout=10.0)
         except asyncio.TimeoutError:
             logger.warning("VLLM server did not terminate within 10 seconds")
         raise
 
-    timeout_task.cancel()
     await asyncio.gather(stdout_task, stderr_task, timeout_task, return_exceptions=True)
 
 

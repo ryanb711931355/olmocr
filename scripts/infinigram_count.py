@@ -50,7 +50,7 @@ def query_infinigram(ngram, index="v4_rpj_llama_s4", retries=3):
                 result = response.json()
                 if "count" in result:
                     return result["count"]
-        except Exception:  # type: ignore
+        except (requests.RequestException, ValueError, KeyError):
             time.sleep(1)
     return 0
 
@@ -149,7 +149,7 @@ def main():
             continue
         try:
             doc = json.loads(line)
-        except Exception as e:
+        except json.JSONDecodeError as e:
             print(f"Error parsing JSON in {key}: {e}")
             continue
         doc_id, match_count, sample_count, details = process_document(doc, tokenizer, args.ngram_size, args.num_ngrams, index=args.index)

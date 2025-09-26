@@ -10,7 +10,6 @@ import sqlite3
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
 import requests
@@ -71,7 +70,7 @@ def deobfuscate_code(obfuscated_code):
         return "ERROR_DECODING"
 
 
-def parse_pdf_hash(pretty_pdf_path: str) -> Optional[str]:
+def parse_pdf_hash(pretty_pdf_path: str) -> str | None:
     pattern = r"s3://ai2-s2-pdfs/([a-f0-9]{4})/([a-f0-9]+)\.pdf"
     match = re.match(pattern, pretty_pdf_path)
     if match:
@@ -79,7 +78,7 @@ def parse_pdf_hash(pretty_pdf_path: str) -> Optional[str]:
     return None
 
 
-def get_original_url(pdf_hash: str, db_path: str) -> Optional[str]:
+def get_original_url(pdf_hash: str, db_path: str) -> str | None:
     """Look up the original URL for a PDF hash in the SQLite database."""
     if not pdf_hash:
         return None
@@ -101,7 +100,7 @@ def get_original_url(pdf_hash: str, db_path: str) -> Optional[str]:
         if result:
             return result[0]
         return None
-    except Exception as e:
+    except sqlite3.Error as e:
         print(f"Error looking up URL for PDF hash {pdf_hash}: {e}")
         return None
 
@@ -184,7 +183,7 @@ def get_random_pages(s3_client, result_files, count=30):
                 if len(random_pages) >= count:
                     break
 
-        except Exception as e:
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
             print(f"Error processing {result_file}: {e}")
             continue
 
@@ -209,7 +208,7 @@ def create_html_output(random_pages, pdf_s3_client, output_path, workspace_path,
     obfuscated_code = obfuscate_code(prolific_code)
 
     # Get current date and time for the report
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_time = datetime.datetime.now(tz=datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     html_content = f"""
     <!DOCTYPE html>
@@ -1760,7 +1759,7 @@ def print_annotation_report(annotation_results: Dict[str, List[Dict[str, Any]]],
     # Print summary statistics
     print("\nSummary:")
     print(
-        f"  Public documents (total): {len(annotation_results['public_document'])} ({len(annotation_results['public_document'])/total_pages*100:.1f}% of all pages)"
+        f"  Public documents (total): {len(annotation_results['public_document'])} ({len(annotation_results['public_document'])/max(1, total_pages)*100:.1f}% of all pages)"
     )
     print(f"    - With PII: {len(public_with_pii)} ({len(public_with_pii)/max(1, len(annotation_results['public_document']))*100:.1f}% of public docs)")
     print(
@@ -1768,16 +1767,16 @@ def print_annotation_report(annotation_results: Dict[str, List[Dict[str, Any]]],
     )
 
     print(
-        f"  Private documents (total): {len(annotation_results['private_document'])} ({len(annotation_results['private_document'])/total_pages*100:.1f}% of all pages)"
+        f"  Private documents (total): {len(annotation_results['private_document'])} ({len(annotation_results['private_document'])/max(1, total_pages)*100:.1f}% of all pages)"
     )
     print(f"    - With PII: {len(private_with_pii)} ({len(private_with_pii)/max(1, len(annotation_results['private_document']))*100:.1f}% of private docs)")
     print(
         f"    - Without PII: {len(private_without_pii)} ({len(private_without_pii)/max(1, len(annotation_results['private_document']))*100:.1f}% of private docs)"
     )
 
-    print(f"  Unreadable pages: {len(annotation_results['cannot_read'])} ({len(annotation_results['cannot_read'])/total_pages*100:.1f}%)")
-    print(f"  Pages with reported content: {len(annotation_results['report_content'])} ({len(annotation_results['report_content'])/total_pages*100:.1f}%)")
-    print(f"  Pages without annotation: {len(annotation_results['no_annotation'])} ({len(annotation_results['no_annotation'])/total_pages*100:.1f}%)")
+    print(f"  Unreadable pages: {len(annotation_results['cannot_read'])} ({len(annotation_results['cannot_read'])/max(1, total_pages)*100:.1f}%)")
+    print(f"  Pages with reported content: {len(annotation_results['report_content'])} ({len(annotation_results['report_content'])/max(1, total_pages)*100:.1f}%)")
+    print(f"  Pages without annotation: {len(annotation_results['no_annotation'])} ({len(annotation_results['no_annotation'])/max(1, total_pages)*100:.1f}%)")
 
     # With the updated flow, there should be no public documents with PII flags
     # as we don't collect PII information for public documents anymore
@@ -1809,7 +1808,7 @@ def print_annotation_report(annotation_results: Dict[str, List[Dict[str, Any]]],
             for pii_type in pii_types:
                 count = pii_counts_private.get(pii_type, 0)
                 if count > 0:
-                    print(f"    - {pii_type}: {count} ({count/len(private_with_pii)*100:.1f}%)")
+                    print(f"    - {pii_type}: {count} ({count/max(1, len(private_with_pii))*100:.1f}%)")
 
         # Print any other PII types not in our categories (like "other")
         other_pii = [pii_type for pii_type in pii_counts_private.keys() if not any(pii_type in types for types in pii_categories.values())]
@@ -1817,7 +1816,7 @@ def print_annotation_report(annotation_results: Dict[str, List[Dict[str, Any]]],
             print("\n  Other PII types:")
             for pii_type in other_pii:
                 count = pii_counts_private.get(pii_type, 0)
-                print(f"    - {pii_type}: {count} ({count/len(private_with_pii)*100:.1f}%)")
+                print(f"    - {pii_type}: {count} ({count/max(1, len(private_with_pii))*100:.1f}%)")
 
     # With the updated flow, there should be no public documents with PII flags
     # so we can remove this section

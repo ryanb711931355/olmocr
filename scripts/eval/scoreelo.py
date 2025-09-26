@@ -1,7 +1,7 @@
 import csv
 import re
 from collections import defaultdict
-from typing import Any, DefaultDict
+from typing import Any
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 import requests  # type: ignore
@@ -42,7 +42,7 @@ def fetch_presigned_datastore(presigned_url):
         resp = requests.get(cleaned_url, headers={"Host": url_parts.netloc, "User-Agent": "Mozilla/5.0"})
         resp.raise_for_status()
         return resp.json()
-    except Exception as e:
+    except requests.RequestException as e:
         print(f"Error fetching datastore from {presigned_url}: {e}")
         return {}
 
@@ -180,7 +180,7 @@ def compute_elo_arena(comparisons, k=32, initial_rating=1500):
     """
     # 1) Collect all unique methods
     methods = set()
-    for A, B in comparisons.keys():
+    for A, B in comparisons:
         methods.add(A)
         methods.add(B)
 
@@ -226,7 +226,7 @@ def make_report(urls):
     for url in urls:
         try:
             html = fetch_review_page_html(url)
-        except Exception as e:
+        except requests.RequestException as e:
             print(f"Error fetching HTML from {url}: {e}")
             continue
 

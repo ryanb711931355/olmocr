@@ -9,7 +9,7 @@ import argparse
 import os
 
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
+import matplotlib.ticker
 import pandas as pd
 from matplotlib import font_manager
 

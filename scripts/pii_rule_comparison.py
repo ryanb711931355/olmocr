@@ -86,7 +86,8 @@ class Token:
 class ExpressionNode:
     """Base class for expression tree nodes"""
 
-    pass
+    def __init__(self):
+        self.value = None
 
 
 class RuleNode(ExpressionNode):
@@ -229,14 +230,7 @@ def list_jsonl_files(path, s3_client=None, recursive=False):
             if "Contents" in page:
                 for obj in page["Contents"]:
                     key = obj["Key"]
-                    if (
-                        key.endswith(".jsonl")
-                        or key.endswith(".json")
-                        or key.endswith(".jsonl.gz")
-                        or key.endswith(".jsonl.zst")
-                        or key.endswith(".jsonl.ztd")
-                        or key.endswith(".jsonl.zstd")
-                    ):
+                    if key.endswith((".jsonl", ".json", ".jsonl.gz", ".jsonl.zst", ".jsonl.ztd", ".jsonl.zstd")):
                         jsonl_files.append(f"s3://{bucket}/{key}")
     else:
         # Local file system
@@ -291,27 +285,10 @@ def load_jsonl_file(file_path, s3_client=None):
                 # If that fails, try with stream decompression
                 logger.warning(f"Standard zstd decompression failed for {file_path}, trying stream decompression: {e}")
 
-                try:
-                    # Try with content-size not required
-                    dctx = zstd.ZstdDecompressor(max_window_size=2147483648)  # Use a large window size
-                    decompressor = dctx.stream_reader(io.BytesIO(raw_data))
-                    decompressed = decompressor.read()
-                except Exception as inner_e:
-                    # If both methods fail, try with chunking
-                    logger.warning(f"Stream decompression also failed, trying chunked reading: {inner_e}")
-
-                    # Chunked reading approach
-                    buffer = io.BytesIO()
-                    dctx = zstd.ZstdDecompressor(max_window_size=2147483648)
-                    with dctx.stream_reader(io.BytesIO(raw_data)) as reader:
-                        while True:
-                            chunk = reader.read(16384)  # Read in 16KB chunks
-                            if not chunk:
-                                break
-                            buffer.write(chunk)
-
-                    buffer.seek(0)
-                    decompressed = buffer.read()
+                # Try with content-size not required
+                dctx = zstd.ZstdDecompressor(max_window_size=2147483648)  # Use a large window size
+                decompressor = dctx.stream_reader(io.BytesIO(raw_data))
+                decompressed = decompressor.read()
         else:
             decompressed = raw_data
 
@@ -412,10 +389,9 @@ def load_documents_and_attributes(docs_folder, attr_folder, s3_client=None, recu
                     if "id" in doc:
                         # If the document already exists, use the one with attributes if possible
                         doc_id = doc["id"]
-                        if doc_id in docs_by_id:
-                            if "attributes" not in doc and "attributes" in docs_by_id[doc_id]:
-                                # Keep the existing document that has attributes
-                                continue
+                        if doc_id in docs_by_id and "attributes" not in doc and "attributes" in docs_by_id[doc_id]:
+                            # Keep the existing document that has attributes
+                            continue
 
                         # Initialize attributes if needed
                         if "attributes" not in doc:
@@ -481,12 +457,9 @@ def load_documents_and_attributes(docs_folder, attr_folder, s3_client=None, recu
 
                             # Merge attributes into documents by ID
                             for doc_id, doc in docs_by_id.items():
-                                if doc_id in attr_by_id:
+                                if doc_id in attr_by_id and "attributes" in attr_by_id[doc_id]:
                                     docs_matched_in_file += 1
-
-                                    # If attributes document has attributes field, merge them
-                                    if "attributes" in attr_by_id[doc_id]:
-                                        doc["attributes"].update(attr_by_id[doc_id]["attributes"])
+                                    doc["attributes"].update(attr_by_id[doc_id]["attributes"])
 
                             logger.info(f"Matched attributes for {docs_matched_in_file} documents from {basename} in {subdir}")
 
@@ -960,8 +933,8 @@ class Parser:
 
     def match(self, *types):
         """Check if the current token matches any of the given types."""
-        for type in types:
-            if self.check(type):
+        for token_type in types:
+            if self.check(token_type):
                 self.advance()
                 return True
 
@@ -1029,18 +1002,18 @@ def parse_rule(rule_string):
         if any(op in rule_type for op in [">", "<", ">=", "<=", "=="]):
             # This is a numeric comparison rule - we'll validate it in apply_simple_rule
             return attribute_name, rule_type
-        elif rule_type not in ["any", "all"]:
+        if rule_type not in ["any", "all"]:
             raise ValueError(f"Invalid rule type: {rule_type}. Supported types: 'any', 'all', or numeric comparison (e.g., 'avg>0.3')")
 
         return attribute_name, rule_type
-    else:
-        # Complex rule expression
-        try:
-            tokens = tokenize_expression(rule_string)
-            parser = Parser(tokens)
-            return parser.parse()
-        except Exception as e:
-            raise ValueError(f"Error parsing expression '{rule_string}': {e}")
+
+    # Complex rule expression
+    try:
+        tokens = tokenize_expression(rule_string)
+        parser = Parser(tokens)
+        return parser.parse()
+    except Exception as e:
+        raise ValueError(f"Error parsing expression '{rule_string}': {e}")
 
 
 def is_complex_expression(rule):
@@ -1509,7 +1482,7 @@ def generate_html_report(docs, title, summary, output_path):
         
         .title {{
             font-size: 1.2em;
-            font-weight: bold;s
+            font-weight: bold;
             color: #333;
             white-space: nowrap;
             overflow: hidden;

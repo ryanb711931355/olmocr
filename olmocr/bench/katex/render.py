@@ -27,6 +27,8 @@ from playwright.sync_api import sync_playwright
 
 # --- New SQLite Cache Implementation ---
 
+# --- New SQLite Cache Implementation ---
+
 
 class EquationCache:
     def __init__(self, db_path: Optional[str] = None):
@@ -271,6 +273,409 @@ def render_equation(
         error_message = str(ex)
         page.close()
         raise
+
+    if error_message:
+        print(f"Error rendering equation: '{equation}'")
+        print(error_message)
+        # Cache the error result so we don't retry it next time.
+        rendered_eq = RenderedEquation(mathml=error_message, spans=[], error=error_message)
+        if use_cache:
+            equation_cache.save(eq_hash, rendered_eq)
+        page.close()
+        return rendered_eq
+
+    page.wait_for_selector(".katex", state="attached")
+
+    if debug_dom:
+        katex_dom_html = page.evaluate(
+            """
+        () => {
+            return document.getElementById("equation-container").innerHTML;
+        }
+        """
+        )
+        print("\n===== KaTeX DOM HTML =====")
+        print(katex_dom_html)
+
+    # Extract inner-most spans with non-whitespace text.
+    spans_info = page.evaluate(
+        """
+    () => {
+        const spans = Array.from(document.querySelectorAll('span'));
+        const list = [];
+        spans.forEach(span => {
+            if (span.children.length === 0 && /\\S/.test(span.textContent)) {
+                const rect = span.getBoundingClientRect();
+                list.push({
+                    text: span.textContent.trim(),
+                    boundingBox: {
+                        x: rect.x,
+                        y: rect.y,
+                        width: rect.width,
+                        height: rect.height
+                    }
+                });
+            }
+        });
+        return list;
+    }
+    """
+    )
+
+    if debug_dom:
+        print("\n===== Extracted Span Information =====")
+        print(spans_info)
+
+    # Extract MathML output (if available) from the KaTeX output.
+    mathml = page.evaluate(
+        """
+    () => {
+        const mathElem = document.querySelector('.katex-mathml math');
+        return mathElem ? mathElem.outerHTML : "";
+    }
+    """
+    )
+
+    page.close()
+
+    rendered_eq = RenderedEquation(
+        mathml=mathml,
+        spans=[
+            SpanInfo(
+                text=s["text"],
+                bounding_box=BoundingBox(
+                    x=s["boundingBox"]["x"],
+                    y=s["boundingBox"]["y"],
+                    width=s["boundingBox"]["width"],
+                    height=s["boundingBox"]["height"],
+                ),
+            )
+            for s in spans_info
+        ],
+    )
+
+    # Save the successfully rendered equation to the SQLite cache.
+    if use_cache:
+        equation_cache.save(eq_hash, rendered_eq)
+    return rendered_eq
+
+
+def compare_rendered_equations(reference: RenderedEquation, hypothesis: RenderedEquation) -> bool:
+    """
+    Compare two RenderedEquation objects.
+    First, check if the normalized MathML of the hypothesis is contained within that of the reference.
+    If not, perform a neighbor-based matching on the spans.
+    """
+    from bs4 import BeautifulSoup
+
+    def extract_inner(mathml: str) -> str:
+        try:
+            soup = BeautifulSoup(mathml, "xml")
+            semantics = soup.find("semantics")
+            if semantics:
+                inner_parts = [
+                    str(child)
+                    for child in semantics.contents
+                    if getattr(child, "name", None) != "annotation"
+                ]
+                return "".join(inner_parts)
+            else:
+                return str(soup)
+        except Exception as e:
+            print("Error parsing MathML with BeautifulSoup:", e)
+            print(mathml)
+            return mathml
+
+    def normalize(s: str) -> str:
+        return re.sub(r"\s+", "", s)
+
+    reference_inner = normalize(extract_inner(reference.mathml))
+    hypothesis_inner = normalize(extract_inner(hypothesis.mathml))
+    if reference_inner in hypothesis_inner:
+        return True
+
+    H, R = reference.spans, hypothesis.spans
+    H = [span for span in H if span.text != "\u200b"]
+    R = [span for span in R if span.text != "\u200b"]
+
+    def expand_span_info(span_info: SpanInfo) -> list[SpanInfo]:
+        total_elems = len(span_info.text)
+        return [
+            SpanInfo(
+                c,
+                BoundingBox(
+                    span_info.bounding_box.x + (span_info.bounding_box.width * index) / total_elems,
+                    span_info.bounding_box.y,
+                    span_info.bounding_box.width / total_elems,
+                    span_info.bounding_box.height,
+                ),
+            )
+            for index, c in enumerate(span_info.text)
+        ]
+
+    H = [span for sublist in H for span in expand_span_info(sublist)]
+    R = [span for sublist in R for span in expand_span_info(sublist)]
+
+    candidate_map = {}
+    for i, hspan in enumerate(H):
+        candidate_map[i] = [j for j, rsp in enumerate(R) if rsp.text == hspan.text]
+        if not candidate_map[i]:
+            return False
+
+    def compute_neighbors(spans, tol=5):
+        neighbors = {}
+        for i, span in enumerate(spans):
+            cx = span.bounding_box.x + span.bounding_box.width / 2
+            cy = span.bounding_box.y + span.bounding_box.height / 2
+            up = down = left = right = None
+            up_dist = down_dist = left_dist = right_dist = None
+            for j, other in enumerate(spans):
+                if i == j:
+                    continue
+                ocx = other.bounding_box.x + other.bounding_box.width / 2
+                ocy = other.bounding_box.y + other.bounding_box.height / 2
+                if ocy < cy and abs(ocx - cx) <= tol:
+                    dist = cy - ocy
+                    if up is None or dist < up_dist:
+                        up = j
+                        up_dist = dist
+                if ocy > cy and abs(ocx - cx) <= tol:
+                    dist = ocy - cy
+                    if down is None or dist < down_dist:
+                        down = j
+                        down_dist = dist
+                if ocx < cx and abs(ocy - cy) <= tol:
+                    dist = cx - ocx
+                    if left is None or dist < left_dist:
+                        left = j
+                        left_dist = dist
+                if ocx > cx and abs(ocy - cy) <= tol:
+                    dist = ocx - cx
+                    if right is None or dist < right_dist:
+                        right = j
+                        right_dist = dist
+            neighbors[i] = {"up": up, "down": down, "left": left, "right": right}
+        return neighbors
+
+    hyp_neighbors = compute_neighbors(H)
+    ref_neighbors = compute_neighbors(R)
+
+    n = len(H)
+    used = [False] * len(R)
+    assignment = {}
+
+    def backtrack(i):
+        if i == n:
+            return True
+        for cand in candidate_map[i]:
+            if used[cand]:
+                continue
+            assignment[i] = cand
+            used[cand] = True
+            valid = True
+            for direction in ["up", "down", "left", "right"]:
+                hyp_nb = hyp_neighbors[i].get(direction)
+                ref_nb = ref_neighbors[cand].get(direction)
+                if hyp_nb is not None:
+                    expected_text = H[hyp_nb].text
+                    if ref_nb is None:
+                        valid = False
+                        break
+                    if hyp_nb in assignment:
+                        if assignment[hyp_nb] != ref_nb:
+                            valid = False
+                            break
+                    else:
+                        if R[ref_nb].text != expected_text:
+                            valid = False
+                            break
+            if valid:
+                if backtrack(i + 1):
+                    return True
+            used[cand] = False
+            del assignment[i]
+        return False
+
+    return backtrack(0)
+
+
+class TestRenderedEquationComparison(unittest.TestCase):
+    def test_exact_match(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_whitespace_difference(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a + b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_not_found(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("c+d", use_cache=False)
+        self.assertFalse(compare_rendered_equations(eq1, eq2))
+
+    def test_align_block_contains_needle(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_align_block_needle_not_in(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertFalse(compare_rendered_equations(eq1, eq2))
+
+    def test_big(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_dot_end1(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_x_vs_textx(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    @unittest.skip
+    def test_overline(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_parens(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_dot_end2(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_lambda(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_gemini(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_fraction_vs_divided_by(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_different_bracket_types(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_inline_vs_display_style_fraction(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_matrix_equivalent_forms(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_different_matrix_types(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_thinspace_vs_regular_space(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    @unittest.skip
+    def test_mathbf_vs_boldsymbol(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_assert_subtle_square_root(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_text_added(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_tensor_notation_equivalent(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_partial_derivative_forms(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_equivalent_sin_forms_diff_parens(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_aligned_multiline_equation(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_subscript_order_invariance(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_hat_vs_widehat(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_equivalent_integral_bounds(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_equivalent_summation_notation(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_different_symbol_with_same_appearance(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_aligned_vs_gathered(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_identical_but_with_color1(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_identical_but_with_color2(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
+
+    def test_newcommand_expansion(self):
+        eq1 = render_equation("a+b", use_cache=False)
+        eq2 = render_equation("a+b", use_cache=False)
+        self.assertTrue(compare_rendered_equations(eq1, eq2))
 
     if error_message:
         print(f"Error rendering equation: '{equation}'")

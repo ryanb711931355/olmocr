@@ -373,7 +373,10 @@ def main():
     file_lock = threading.Lock()
 
     with ThreadPoolExecutor(max_workers=args.parallel) as executor:
-        futures = {executor.submit(process_pdf, (pdf_path, i), args, client): pdf_path for i, pdf_path in enumerate(pdf_paths)}
+        futures = {
+            executor.submit(process_pdf, (pdf_path, i), args, client): pdf_path
+            for i, pdf_path in enumerate(pdf_paths)
+        }
         for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing PDFs"):
             pdf_path = futures[future]
             try:
