@@ -18,6 +18,7 @@ import re
 import sys
 import time
 from typing import Optional
+from types import NoneType
 from urllib.parse import urlparse
 
 import boto3
@@ -69,8 +70,8 @@ metrics = MetricsKeeper(window=60 * 5)
 class PIIClassification(BaseModel):
     primary_language: str = Field(..., description="Primary language as a two-letter code")
     document_type: str = Field(..., description="Basic summary of document type classification")
-    is_resume_cv: Optional[bool] = Field(None, description="True if the document is a page from a resume or cv")
-    contains_pii: Optional[bool] = Field(None, description="True if document contains PII")
+    is_resume_cv: bool | None = Field(None, description="True if the document is a page from a resume or cv")
+    contains_pii: bool | None = Field(None, description="True if document contains PII")
 
 
 class RichPIIClassification(BaseModel):
@@ -79,21 +80,21 @@ class RichPIIClassification(BaseModel):
 
     is_public_document: bool = Field(False, description="True if the document is meant for public dissemination")
 
-    contains_pii_government_id: Optional[bool] = Field(None)
-    contains_pii_financial_info: Optional[bool] = Field(None)
-    contains_pii_biometric_data: Optional[bool] = Field(None)
-    contains_pii_login_info: Optional[bool] = Field(None)
+    contains_pii_government_id: bool | None = Field(None)
+    contains_pii_financial_info: bool | None = Field(None)
+    contains_pii_biometric_data: bool | None = Field(None)
+    contains_pii_login_info: bool | None = Field(None)
 
-    contains_identifier_name: Optional[bool] = Field(None, description="True if the document contains a name")
-    contains_identifier_email: Optional[bool] = Field(None, description="True if the document contains an email address")
-    contains_identifier_phone_number: Optional[bool] = Field(None, description="True if the document contains phone numbers")
+    contains_identifier_name: bool | None = Field(None, description="True if the document contains a name")
+    contains_identifier_email: bool | None = Field(None, description="True if the document contains an email address")
+    contains_identifier_phone_number: bool | None = Field(None, description="True if the document contains phone numbers")
 
-    contains_identifier_with_address: Optional[bool] = Field(None)
-    contains_identifier_with_biographical_info: Optional[bool] = Field(None)
-    contains_identifier_with_location_info: Optional[bool] = Field(None)
-    contains_identifier_with_employment_info: Optional[bool] = Field(None)
-    contains_identifier_with_education_info: Optional[bool] = Field(None)
-    contains_identifier_with_medical_info: Optional[bool] = Field(None)
+    contains_identifier_with_address: bool | None = Field(None)
+    contains_identifier_with_biographical_info: bool | None = Field(None)
+    contains_identifier_with_location_info: bool | None = Field(None)
+    contains_identifier_with_employment_info: bool | None = Field(None)
+    contains_identifier_with_education_info: bool | None = Field(None)
+    contains_identifier_with_medical_info: bool | None = Field(None)
 
     def contains_any_pii(self) -> bool:
         if self.is_public_document:
@@ -177,7 +178,7 @@ Only consider actual occurrences of the PII within the document shown.
     # ---------- HTTP call ---------------------------------------------------
     try:
         status, body = await apost(url, json_data=query)
-    except Exception as e:
+    except (httpx.HTTPError, ConnectionError) as e:
         logger.warning(f"Server network error: {e!s}")
         metrics.add_metrics(server_errors=1)
         return RichPIIClassification(primary_language="en", document_type="unknown", is_public_document=False)
@@ -278,7 +279,7 @@ async def apost(url, json_data):
             raise ConnectionError("Anything other than fixed content length responses are not implemented yet")
 
         return status_code, response_body
-    except Exception as e:
+    except (ConnectionError, ValueError) as e:
         # Pass through errors
         raise e
     finally:
@@ -287,7 +288,7 @@ async def apost(url, json_data):
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
@@ -415,7 +416,7 @@ async def process_file(args, worker_id: int, file_uri: str):
     else:
         file_bytes = raw
 
-    lines = file_bytes.decode("utf-8").splitlines()
+    lines = file_bytes.decode("utf-8", errors="replace").splitlines()
     page_tasks = {}
 
     # Send all records in parallel, max N queued at a time
@@ -423,7 +424,11 @@ async def process_file(args, worker_id: int, file_uri: str):
 
     async with asyncio.TaskGroup() as tg:
         for line in lines:
-            dolma_doc = json.loads(line)
+            try:
+                dolma_doc = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning(f"Invalid JSON in line: {line[:100]!r}")
+                continue
             task = tg.create_task(process_dolma_document(args, dolma_doc, sem))
             page_tasks[dolma_doc["id"]] = (task, dolma_doc)
 
@@ -508,7 +513,7 @@ async def worker(args, work_queue: WorkQueue, semaphore: asyncio.Semaphore, work
                 os.makedirs(os.path.dirname(sentinel_path), exist_ok=True)
                 open(sentinel_path, "w").close()
 
-        except Exception as exc:
+        except (OSError, IOError) as exc:
             logger.exception(f"Worker {worker_id} exception: {exc!s}")
         finally:
             semaphore.release()
@@ -581,7 +586,7 @@ async def server_task(model_name_or_path, args, semaphore):
             try:
                 line = line.decode("utf-8").rstrip()
                 await process_line(line)
-            except Exception as ex:
+            except (UnicodeDecodeError, Exception) as ex:
                 logger.warning(f"Got {ex} when reading log line from inference server, skipping")
 
     async def timeout_task():
@@ -643,7 +648,7 @@ async def check_server_ready():
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
+        except (httpx.RequestError, httpx.HTTPStatusError):
             logger.warning(f"Attempt {attempt}: Please wait for model server to become ready...")
 
         await asyncio.sleep(delay_sec)

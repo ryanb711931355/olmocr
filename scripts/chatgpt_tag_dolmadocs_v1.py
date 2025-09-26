@@ -16,7 +16,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import boto3
 import pydantic
@@ -227,7 +227,7 @@ def load_document_file(s3_client, file_path):
 
         # Return the decoded lines
         return file_bytes.decode("utf-8").strip().split("\n")
-    except Exception as e:
+    except (gzip.BadGzipFile, zstandard.ZstdError, UnicodeDecodeError) as e:
         logger.error(f"Error loading file {file_path}: {e}")
         return []
 
@@ -279,7 +279,7 @@ def get_document_info_from_line(line, file_path, line_index):
     except json.JSONDecodeError:
         logger.warning(f"Invalid JSON in {file_path} line {line_index}")
         return None
-    except Exception as e:
+    except (KeyError, IndexError, TypeError) as e:
         logger.warning(f"Error processing document in {file_path} line {line_index}: {e}")
         return None
 

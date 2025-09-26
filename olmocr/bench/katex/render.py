@@ -375,9 +375,8 @@ def compare_rendered_equations(reference: RenderedEquation, hypothesis: Rendered
                 return "".join(inner_parts)
             else:
                 return str(soup)
-        except Exception as e:
-            print("Error parsing MathML with BeautifulSoup:", e)
-            print(mathml)
+        except Exception:
+            print("Error parsing MathML with BeautifulSoup:", mathml)
             return mathml
 
     def normalize(s: str) -> str:

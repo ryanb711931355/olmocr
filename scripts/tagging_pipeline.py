@@ -19,6 +19,7 @@ import re
 import sys
 import time
 from typing import Optional
+from types import NoneType
 from urllib.parse import urlparse
 
 import boto3
@@ -104,7 +105,7 @@ async def _process_single_page(page_text: str) -> PIIClassification:
     # ---------- HTTP call ---------------------------------------------------
     try:
         status, body = await apost(url, json_data=query)
-    except Exception as e:
+    except (ConnectionError, TimeoutError, OSError) as e:
         logger.warning(f"Server network error: {e!s}")
         metrics.add_metrics(server_errors=1)
         return PIIClassification(primary_language="en", document_type="unknown", is_resume_cv=None, contains_pii=None)
@@ -205,7 +206,7 @@ async def apost(url, json_data):
             raise ConnectionError("Anything other than fixed content length responses are not implemented yet")
 
         return status_code, response_body
-    except Exception as e:
+    except (ConnectionError, OSError, ValueError) as e:
         # Pass through errors
         raise e
     finally:
@@ -214,7 +215,7 @@ async def apost(url, json_data):
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
@@ -517,7 +518,7 @@ async def check_server_ready():
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
+        except (httpx.RequestError, httpx.HTTPStatusError):
             logger.warning(f"Attempt {attempt}: Please wait for model server to become ready...")
 
         await asyncio.sleep(delay_sec)
@@ -587,7 +588,7 @@ def submit_beaker_job(args):
 
         if input().strip().lower() != "y":
             print("Exiting...")
-            sys.exit(1)
+            raise SystemExit(1)
 
         b.secret.write(f"{owner}-WEKA_ACCESS_KEY_ID", os.environ.get("WEKA_ACCESS_KEY_ID", ""), args.beaker_workspace)
         b.secret.write(f"{owner}-WEKA_SECRET_ACCESS_KEY", os.environ.get("WEKA_SECRET_ACCESS_KEY", ""), args.beaker_workspace)

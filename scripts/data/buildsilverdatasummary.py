@@ -7,7 +7,6 @@ import re
 import sqlite3
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Optional
 from urllib.parse import urlparse
 
 from tqdm import tqdm
@@ -145,6 +144,8 @@ def main():
                 all_rows.extend(results)
             except Exception as e:
                 print(f"Error processing file: {future_to_file[future]}\n{e}")
+                import traceback
+                traceback.print_exc()
 
     os.makedirs(args.output, exist_ok=True)
 

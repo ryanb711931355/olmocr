@@ -258,7 +258,7 @@ async def render_pdf_with_playwright(html_content, output_pdf_path, png_width, p
     return False
 
 
-def generate_tests_from_html(html_content: str, pdf_id: str, page_num: int, verbose_table_testing: bool = False) -> List[Dict]:
+def generate_tests_from_html(html_content: str, pdf_id: str, page_num: int, verbose_table_testing: bool = False) -> list[dict]:
     """
     Generate tests from HTML content parsed from the PDF.
 
@@ -414,7 +414,7 @@ def generate_tests_from_html(html_content: str, pdf_id: str, page_num: int, verb
                 if text:
                     text_elements.append(text)
 
-        # If no elements found, use the parent's text as a fallback, but only if
+        # If no elements found, use the parent's text as a fallback
         if not text_elements:
             parent_text = mini_soup.get_text().strip()
             if parent_text:
@@ -857,15 +857,35 @@ def process_pdf(pdf_info, args, client):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Convert PDFs to HTML templates and render with Playwright")
-    parser.add_argument("--input_list", required=True, help="Path to a file containing S3 paths to PDFs")
-    parser.add_argument("--output_dir", required=True, help="Directory to store extracted pages and tests")
-    parser.add_argument("--temp_dir", default="/tmp/mine_tables", help="Directory for temporary files")
-    parser.add_argument("--max_tests", type=int, default=100, help="Maximum number of tests to generate")
-    parser.add_argument("--parallel", type=int, default=1, help="Number of parallel threads to use")
-    parser.add_argument("--api_key", help="Claude API key (or set ANTHROPIC_API_KEY environment variable)")
-    parser.add_argument("--skip_playwright", action="store_true", help="Skip Playwright PDF rendering")
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose output including table test verification")
+    parser = argparse.ArgumentParser(
+        description="Convert PDFs to HTML templates and render with Playwright"
+    )
+    parser.add_argument(
+        "--input_list", required=True, help="Path to a file containing S3 paths to PDFs"
+    )
+    parser.add_argument(
+        "--output_dir", required=True, help="Directory to store extracted pages and tests"
+    )
+    parser.add_argument(
+        "--temp_dir", default="/tmp/mine_tables", help="Directory for temporary files"
+    )
+    parser.add_argument(
+        "--max_tests", type=int, default=100, help="Maximum number of tests to generate"
+    )
+    parser.add_argument(
+        "--parallel", type=int, default=1, help="Number of parallel threads to use"
+    )
+    parser.add_argument(
+        "--api_key", help="Claude API key (or set ANTHROPIC_API_KEY environment variable)"
+    )
+    parser.add_argument(
+        "--skip_playwright", action="store_true", help="Skip Playwright PDF rendering"
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Enable verbose output including table test verification",
+    )
     args = parser.parse_args()
 
     # Ensure output and temp directories exist
@@ -920,10 +940,15 @@ def main():
     # Process PDFs in parallel
     with ThreadPoolExecutor(max_workers=args.parallel) as executor:
         # Submit all tasks
-        futures = {executor.submit(process_pdf, (s3_path, i), args, client): s3_path for i, s3_path in enumerate(s3_paths)}
+        futures = {
+            executor.submit(process_pdf, (s3_path, i), args, client): s3_path
+            for i, s3_path in enumerate(s3_paths)
+        }
 
         # Process results as they complete
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing PDFs"):
+        for future in tqdm(
+            concurrent.futures.as_completed(futures), total=len(futures), desc="Processing PDFs"
+        ):
             s3_path = futures[future]
             try:
                 result = future.result()
@@ -944,7 +969,9 @@ def main():
                             if test_type in test_types:
                                 test_types[test_type] += 1
 
-                        print(f"Added {len(result['tests'])} tests from {result['pdf_id']}, total: {test_counter}")
+                        print(
+                            f"Added {len(result['tests'])} tests from {result['pdf_id']}, total: {test_counter}"
+                        )
             except Exception as e:
                 print(f"Error processing {s3_path}: {e}")
 
