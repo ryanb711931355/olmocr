@@ -152,7 +152,19 @@ If this page does not itself contain PII, but references documents (such as curr
 Only consider actual occurrences of the PII within the document shown.
 """
 
-    prompt_end = "Answer as a JSON object with the following schema {'primary_language': str, 'document_type': str, 'is_public_document': bool, 'contains_pii_government_id': bool, 'contains_pii_financial_info': bool, 'contains_pii_biometric_data': bool, 'contains_pii_login_info': bool, 'contains_identifier_name': bool, 'contains_identifier_email': bool, 'contains_identifier_phone_number': bool, 'contains_identifier_with_address': bool, 'contains_identifier_with_biographical_info': bool, 'contains_identifier_with_location_info': bool, 'contains_identifier_with_employment_info': bool, 'contains_identifier_with_education_info': bool, 'contains_identifier_with_medical_info': bool}"
+    prompt_end = (
+        "Answer as a JSON object with the following schema "
+        "{'primary_language': str, 'document_type': str, 'is_public_document': bool, "
+        "'contains_pii_government_id': bool, 'contains_pii_financial_info': bool, "
+        "'contains_pii_biometric_data': bool, 'contains_pii_login_info': bool, "
+        "'contains_identifier_name': bool, 'contains_identifier_email': bool, "
+        "'contains_identifier_phone_number': bool, 'contains_identifier_with_address': bool, "
+        "'contains_identifier_with_biographical_info': bool, "
+        "'contains_identifier_with_location_info': bool, "
+        "'contains_identifier_with_employment_info': bool, "
+        "'contains_identifier_with_education_info': bool, "
+        "'contains_identifier_with_medical_info': bool}"
+    )
 
     query = {
         "model": "google/gemma-3-12b-it",
@@ -169,7 +181,13 @@ Only consider actual occurrences of the PII within the document shown.
         ],
         "max_tokens": 300,
         "temperature": 0.0,
-        "response_format": {"type": "json_schema", "json_schema": {"name": "RichPIIClassification", "schema": RichPIIClassification.model_json_schema()}},
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "RichPIIClassification",
+                "schema": RichPIIClassification.model_json_schema(),
+            },
+        },
     }
 
     url = f"http://localhost:{SERVER_PORT}/v1/chat/completions"
@@ -589,7 +607,12 @@ async def server_task(model_name_or_path, args, semaphore):
         try:
             while True:
                 await asyncio.sleep(1)
-                if server_printed_ready_message and last_queue_req == 0 and time.time() - last_semaphore_release > 30 and semaphore.locked():
+                if (
+                    server_printed_ready_message
+                    and last_queue_req == 0
+                    and time.time() - last_semaphore_release > 30
+                    and semaphore.locked()
+                ):
                     semaphore.release()
                     last_semaphore_release = time.time()
                     logger.info("Semaphore released, allowing a worker to proceed.")
@@ -700,7 +723,11 @@ def submit_beaker_job(args):
     args_list = [arg for arg in sys.argv[1:] if arg != "--beaker"]
 
     # Take out the --pdfs [arg] or --pdfs=[arg], since the queue is populated locally
-    args_list = [arg for i, arg in enumerate(args_list) if not (arg.startswith("--pdfs") or (i > 0 and args_list[i - 1] == "--pdfs"))]
+    args_list = [
+        arg
+        for i, arg in enumerate(args_list)
+        if not (arg.startswith("--pdfs") or (i > 0 and args_list[i - 1] == "--pdfs"))
+    ]
 
     try:
         b.secret.get(f"{owner}-WEKA_ACCESS_KEY_ID", args.beaker_workspace)
@@ -708,7 +735,8 @@ def submit_beaker_job(args):
         b.secret.get(f"{owner}-AWS_CREDENTIALS_FILE", args.beaker_workspace)
     except SecretNotFound:
         print(
-            f"Expected beaker secrets for accessing Weka and S3 are not found. Are you okay to write those to your beaker workspace {args.beaker_workspace}? [y/n]"
+            f"Expected beaker secrets for accessing Weka and S3 are not found. "
+            f"Are you okay to write those to your beaker workspace {args.beaker_workspace}? [y/n]"
         )
 
         if input().strip().lower() != "y":

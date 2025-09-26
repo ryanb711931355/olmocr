@@ -1016,7 +1016,9 @@ def print_stats(args, root_work_queue):
             logger.warning(f"Error processing {s3_path}: {e}")
             return 0, 0, 0, 0, 0, set(), 0, 0
 
-    print(f"\nCompleted work items {completed_items:,} out of {total_items:,}: {completed_items/total_items*100:.2f}%")
+    print(
+        f"\nCompleted work items {completed_items:,} out of {total_items:,}: {completed_items/total_items*100:.2f}%"
+    )
     print("\nProcessing output files...")
     docs_total = 0
     input_tokens_total = 0
@@ -1036,12 +1038,20 @@ def print_stats(args, root_work_queue):
             done_work_hash = match.group(1)
             if done_work_hash in work_queue:
                 original_paths.update(work_queue[done_work_hash])
-
     with ThreadPoolExecutor() as executor:
         futures = {executor.submit(process_output_file, item): item for item in done_work_items}
 
         for future in tqdm(as_completed(futures), total=len(futures)):
-            (doc_count, input_tokens, output_tokens, pages, fallback_pages, processed_paths, long_context_docs, long_context_tokens) = future.result()
+            (
+                doc_count,
+                input_tokens,
+                output_tokens,
+                pages,
+                fallback_pages,
+                processed_paths,
+                long_context_docs,
+                long_context_tokens,
+            ) = future.result()
             docs_total += doc_count
             input_tokens_total += input_tokens
             output_tokens_total += output_tokens
@@ -1065,11 +1075,13 @@ def print_stats(args, root_work_queue):
     print(f"Total pages processed: {pages_total:,}")
 
     print(f"\nTotal output tokens: {output_tokens_total:,}")
-    print(f"Projected output tokens: {round((output_tokens_total/max(1, completed_items))*total_items):,}")
+    print(
+        f"Projected output tokens: {round((output_tokens_total / max(1, completed_items)) * total_items):,}"
+    )
 
-    print(f"\nAverage pages per doc: {pages_total/max(1,docs_total):,.1f}")
-    print(f"Average output tokens per doc: {output_tokens_total/max(1,docs_total):,.1f}")
-    print(f"Average output tokens per page: {output_tokens_total/max(1,pages_total):,.1f}")
+    print(f"\nAverage pages per doc: {pages_total / max(1, docs_total):,.1f}")
+    print(f"Average output tokens per doc: {output_tokens_total / max(1, docs_total):,.1f}")
+    print(f"Average output tokens per page: {output_tokens_total / max(1, pages_total):,.1f}")
 
     # Print long context documents stats
     print(f"\nLong Context Documents (>{LONG_CONTEXT_THRESHOLD} tokens): {long_context_docs_count:,}")
@@ -1077,7 +1089,9 @@ def print_stats(args, root_work_queue):
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Manager for running millions of PDFs through a batch inference pipeline.")
+    parser = argparse.ArgumentParser(
+        description="Manager for running millions of PDFs through a batch inference pipeline."
+    )
     parser.add_argument(
         "workspace",
         help="The filesystem path where work will be stored, can be a local folder, or an s3 path if coordinating work with many workers, s3://bucket/prefix/ ",
@@ -1095,7 +1109,9 @@ async def main():
     )
 
     # More detailed config options, usually you shouldn't have to change these
-    parser.add_argument("--workspace_profile", help="S3 configuration profile for accessing the workspace", default=None)
+    parser.add_argument(
+        "--workspace_profile", help="S3 configuration profile for accessing the workspace", default=None
+    )
     parser.add_argument("--pdf_profile", help="S3 configuration profile for accessing the raw pdf documents", default=None)
     parser.add_argument("--pages_per_group", type=int, default=500, help="Aiming for this many pdf pages per work item group")
     parser.add_argument("--max_page_retries", type=int, default=8, help="Max number of times we will retry rendering a page")
@@ -1106,20 +1122,51 @@ async def main():
     parser.add_argument("--markdown", action="store_true", help="Also write natural text to markdown files preserving the folder structure of the input pdfs")
 
     parser.add_argument("--target_longest_image_dim", type=int, help="Dimension on longest side to use for rendering the pdf pages", default=1288)
-    parser.add_argument("--target_anchor_text_len", type=int, help="Maximum amount of anchor text to use (characters), not used for new models", default=-1)
-    parser.add_argument("--guided_decoding", action="store_true", help="Enable guided decoding for model YAML type outputs")
-    parser.add_argument("--api_key", type=str, default=None, help="API key for authenticated remote servers (e.g., DeepInfra)")
+    parser.add_argument(
+        "--target_anchor_text_len",
+        type=int,
+        help="Maximum amount of anchor text to use (characters), not used for new models",
+        default=-1,
+    )
+    parser.add_argument(
+        "--guided_decoding", action="store_true", help="Enable guided decoding for model YAML type outputs"
+    )
+    parser.add_argument(
+        "--api_key", type=str, default=None, help="API key for authenticated remote servers (e.g., DeepInfra)"
+    )
 
     vllm_group = parser.add_argument_group(
-        "VLLM arguments", "These arguments are passed to vLLM. Any unrecognized arguments are also automatically forwarded to vLLM."
+        "VLLM arguments",
+        "These arguments are passed to vLLM. Any unrecognized arguments are also automatically forwarded to vLLM.",
     )
     vllm_group.add_argument(
-        "--gpu-memory-utilization", type=float, help="Fraction of VRAM vLLM may pre-allocate for KV-cache " "(passed through to vllm serve)."
+        "--gpu-memory-utilization",
+        type=float,
+        help="Fraction of VRAM vLLM may pre-allocate for KV-cache (passed through to vllm serve).",
     )
-    vllm_group.add_argument("--max_model_len", type=int, default=16384, help="Upper bound (tokens) vLLM will allocate KV-cache for, lower if VLLM won't start")
-    vllm_group.add_argument("--tensor-parallel-size", "-tp", type=int, default=1, help="Tensor parallel size for vLLM")
-    vllm_group.add_argument("--data-parallel-size", "-dp", type=int, default=1, help="Data parallel size for vLLM")
-    vllm_group.add_argument("--port", type=int, default=30024, help="Port to use for the VLLM server")
+    vllm_group.add_argument(
+        "--max_model_len",
+        type=int,
+        default=16384,
+        help="Upper bound (tokens) vLLM will allocate KV-cache for, lower if VLLM won't start",
+    )
+    vllm_group.add_argument(
+        "--tensor-parallel-size",
+        "-tp",
+        type=int,
+        default=1,
+        help="Tensor parallel size for vLLM",
+    )
+    vllm_group.add_argument(
+        "--data-parallel-size",
+        "-dp",
+        type=int,
+        default=1,
+        help="Data parallel size for vLLM",
+    )
+    vllm_group.add_argument(
+        "--port", type=int, default=30024, help="Port to use for the VLLM server"
+    )
     vllm_group.add_argument(
         "--server",
         type=str,
@@ -1128,15 +1175,29 @@ async def main():
 
     # Beaker/job running stuff
     beaker_group = parser.add_argument_group("beaker/cluster execution")
-    beaker_group.add_argument("--beaker", action="store_true", help="Submit this job to beaker instead of running locally")
-    beaker_group.add_argument("--beaker_workspace", help="Beaker workspace to submit to", default="ai2/olmocr")
+    beaker_group.add_argument(
+        "--beaker", action="store_true", help="Submit this job to beaker instead of running locally"
+    )
+    beaker_group.add_argument(
+        "--beaker_workspace", help="Beaker workspace to submit to", default="ai2/olmocr"
+    )
     beaker_group.add_argument(
         "--beaker_cluster",
         help="Beaker clusters you want to run on",
-        default=["ai2/jupiter-cirrascale-2", "ai2/ceres-cirrascale", "ai2/neptune-cirrascale", "ai2/saturn-cirrascale", "ai2/augusta-google-1"],
+        default=[
+            "ai2/jupiter-cirrascale-2",
+            "ai2/ceres-cirrascale",
+            "ai2/neptune-cirrascale",
+            "ai2/saturn-cirrascale",
+            "ai2/augusta-google-1",
+        ],
     )
-    beaker_group.add_argument("--beaker_gpus", type=int, default=1, help="Number of gpu replicas to run")
-    beaker_group.add_argument("--beaker_priority", type=str, default="normal", help="Beaker priority level for the job")
+    beaker_group.add_argument(
+        "--beaker_gpus", type=int, default=1, help="Number of gpu replicas to run"
+    )
+    beaker_group.add_argument(
+        "--beaker_priority", type=str, default="normal", help="Beaker priority level for the job"
+    )
 
     args, unknown_args = parser.parse_known_args()
 
@@ -1167,7 +1228,9 @@ async def main():
         replica_count = int(os.environ.get("BEAKER_REPLICA_COUNT", "1"))
         interval = 10 if (replica_count - 1) * 10 <= 30 else 30 / max(1, replica_count - 1)
         sleep_time = int(os.environ.get("BEAKER_REPLICA_RANK", "0")) * interval
-        logger.info(f"Beaker job sleeping for {sleep_time} seconds to stagger model downloads")
+        logger.info(
+            f"Beaker job sleeping for {sleep_time} seconds to stagger model downloads"
+        )
         await asyncio.sleep(sleep_time)
 
     if args.workspace_profile:
@@ -1218,7 +1281,9 @@ async def main():
                 else:
                     raise ValueError(f"Unsupported file extension for {pdf_path}")
             else:
-                raise ValueError("pdfs argument needs to be either a local path, an s3 path, or an s3 glob pattern...")
+                raise ValueError(
+                    "pdfs argument needs to be either a local path, an s3 path, or an s3 glob pattern..."
+                )
 
         logger.info(f"Found {len(pdf_work_paths):,} total pdf paths to add")
 
@@ -1248,7 +1313,9 @@ async def main():
             avg_pages_per_pdf = 10  # Default to 10 pages per PDF if sampling fails
 
         items_per_group = max(1, int(args.pages_per_group / avg_pages_per_pdf))
-        logger.info(f"Calculated items_per_group: {items_per_group} based on average pages per PDF: {avg_pages_per_pdf:.2f}")
+        logger.info(
+            f"Calculated items_per_group: {items_per_group} based on average pages per PDF: {avg_pages_per_pdf:.2f}"
+        )
 
         # Now call populate_queue
         await work_queue.populate_queue(pdf_work_paths, items_per_group)

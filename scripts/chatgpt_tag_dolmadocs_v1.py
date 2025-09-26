@@ -371,7 +371,13 @@ Only consider actual occurrences of the PII within the document shown.
             messages=[
                 {
                     "role": "user",
-                    "content": [{"type": "text", "text": user_message}, {"type": "image_url", "image_url": {"url": f"data:image/webp;base64,{base64_image}"}}],
+                    "content": [
+                        {"type": "text", "text": user_message},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/webp;base64,{base64_image}"},
+                        },
+                    ],
                 }
             ],
             response_format=PIIAnnotation,
@@ -436,18 +442,42 @@ def process_single_page(args, doc_info, pdf_s3_client=None):
         language_key_name: [[start_pos, end_pos, annotation.language_code.name]],
         f"{model_prefix}_is_public_document": [[start_pos, end_pos, annotation.is_public_document]],
         f"{model_prefix}_contains_names": [[start_pos, end_pos, annotation.contains_names]],
-        f"{model_prefix}_contains_email_addresses": [[start_pos, end_pos, annotation.contains_email_addresses]],
-        f"{model_prefix}_contains_phone_numbers": [[start_pos, end_pos, annotation.contains_phone_numbers]],
-        f"{model_prefix}_contains_addresses": [[start_pos, end_pos, annotation.contains_addresses]],
-        f"{model_prefix}_contains_biographical_info": [[start_pos, end_pos, annotation.contains_biographical_info]],
-        f"{model_prefix}_contains_location_info": [[start_pos, end_pos, annotation.contains_location_info]],
-        f"{model_prefix}_contains_employment_info": [[start_pos, end_pos, annotation.contains_employment_info]],
-        f"{model_prefix}_contains_education_info": [[start_pos, end_pos, annotation.contains_education_info]],
-        f"{model_prefix}_contains_medical_info": [[start_pos, end_pos, annotation.contains_medical_info]],
-        f"{model_prefix}_contains_government_ids": [[start_pos, end_pos, annotation.contains_government_ids]],
-        f"{model_prefix}_contains_financial_info": [[start_pos, end_pos, annotation.contains_financial_info]],
-        f"{model_prefix}_contains_biometric_data": [[start_pos, end_pos, annotation.contains_biometric_data]],
-        f"{model_prefix}_contains_login_info": [[start_pos, end_pos, annotation.contains_login_info]],
+        f"{model_prefix}_contains_email_addresses": [
+            [start_pos, end_pos, annotation.contains_email_addresses]
+        ],
+        f"{model_prefix}_contains_phone_numbers": [
+            [start_pos, end_pos, annotation.contains_phone_numbers]
+        ],
+        f"{model_prefix}_contains_addresses": [
+            [start_pos, end_pos, annotation.contains_addresses]
+        ],
+        f"{model_prefix}_contains_biographical_info": [
+            [start_pos, end_pos, annotation.contains_biographical_info]
+        ],
+        f"{model_prefix}_contains_location_info": [
+            [start_pos, end_pos, annotation.contains_location_info]
+        ],
+        f"{model_prefix}_contains_employment_info": [
+            [start_pos, end_pos, annotation.contains_employment_info]
+        ],
+        f"{model_prefix}_contains_education_info": [
+            [start_pos, end_pos, annotation.contains_education_info]
+        ],
+        f"{model_prefix}_contains_medical_info": [
+            [start_pos, end_pos, annotation.contains_medical_info]
+        ],
+        f"{model_prefix}_contains_government_ids": [
+            [start_pos, end_pos, annotation.contains_government_ids]
+        ],
+        f"{model_prefix}_contains_financial_info": [
+            [start_pos, end_pos, annotation.contains_financial_info]
+        ],
+        f"{model_prefix}_contains_biometric_data": [
+            [start_pos, end_pos, annotation.contains_biometric_data]
+        ],
+        f"{model_prefix}_contains_login_info": [
+            [start_pos, end_pos, annotation.contains_login_info]
+        ],
         f"{model_prefix}_other_pii": [[start_pos, end_pos, annotation.other_pii]],
     }
 
@@ -524,7 +554,9 @@ def write_attribute_file(args, processed_docs, file_documents, workspace_s3):
                 bucket, prefix = parse_s3_path(args.workspace)
                 key = os.path.join(prefix, out_rel)
                 workspace_s3.put_object(Bucket=bucket, Key=key, Body=payload)
-                logger.info(f"Wrote {len(file_entries)} attribute entries to s3://{bucket}/{key}")
+                logger.info(
+                    f"Wrote {len(file_entries)} attribute entries to s3://{bucket}/{key}"
+                )
             else:
                 out_path = os.path.join(args.workspace, out_rel)
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -561,7 +593,9 @@ def main():
     if args.workspace_profile:
         workspace_session = boto3.Session(profile_name=args.workspace_profile)
         workspace_s3 = workspace_session.client("s3")
-        logger.info(f"Using AWS profile '{args.workspace_profile}' for workspace access")
+        logger.info(
+            f"Using AWS profile '{args.workspace_profile}' for workspace access"
+        )
     else:
         workspace_s3 = boto3.client("s3")
         logger.info("Using default AWS credentials for workspace access")
@@ -574,7 +608,9 @@ def main():
         # If no PDF profile specified, use the workspace profile or default
         if args.workspace_profile:
             pdf_s3 = workspace_s3
-            logger.info(f"Using workspace profile '{args.workspace_profile}' for PDF access")
+            logger.info(
+                f"Using workspace profile '{args.workspace_profile}' for PDF access"
+            )
         else:
             pdf_s3 = boto3.client("s3")
             logger.info("Using default AWS credentials for PDF access")
@@ -594,7 +630,9 @@ def main():
 
     # Process each file individually
     for file_index, (file_path, documents) in enumerate(file_documents.items()):
-        logger.info(f"Processing file {file_index+1}/{len(file_documents)}: {file_path}")
+        logger.info(
+            f"Processing file {file_index+1}/{len(file_documents)}: {file_path}"
+        )
 
         # Only process documents that have valid information
         valid_docs = []
@@ -609,7 +647,9 @@ def main():
 
         # Process in batches to manage memory and API rate limits
         total_docs = len(valid_docs)
-        logger.info(f"Found {total_docs} valid documents to process in {file_path}")
+        logger.info(
+            f"Found {total_docs} valid documents to process in {file_path}"
+        )
 
         # Process in batches (process by document, but maintain file coherence)
         all_results = []
@@ -618,7 +658,9 @@ def main():
             batch_num = i // args.batch_size + 1
             total_batches = (total_docs + args.batch_size - 1) // args.batch_size
 
-            logger.info(f"Processing batch {batch_num}/{total_batches} of {file_path} ({len(batch)} documents)...")
+            logger.info(
+                f"Processing batch {batch_num}/{total_batches} of {file_path} ({len(batch)} documents)..."
+            )
             results = []
 
             with ThreadPoolExecutor(max_workers=args.max_workers) as executor:
@@ -627,7 +669,9 @@ def main():
                 for doc_info in batch:
                     futures.append(executor.submit(process_single_page, args, doc_info, pdf_s3))
 
-                for future in tqdm(futures, desc=f"Processing batch {batch_num} of {file_path}"):
+                for future in tqdm(
+                    futures, desc=f"Processing batch {batch_num} of {file_path}"
+                ):
                     try:
                         result = future.result()
                         results.append(result)
@@ -635,17 +679,23 @@ def main():
                         logger.error(f"Error processing document: {e}")
 
             # Save results for this batch
-            batch_output_dir = os.path.join(args.output_dir, f"file_{file_index+1}_batch_{batch_num}")
+            batch_output_dir = os.path.join(
+                args.output_dir, f"file_{file_index+1}_batch_{batch_num}"
+            )
             os.makedirs(batch_output_dir, exist_ok=True)
             save_results(results, batch_output_dir)
 
             # Collect all results for this file
             all_results.extend(results)
-            logger.info(f"Completed batch {batch_num}/{total_batches} of {file_path}")
+            logger.info(
+                f"Completed batch {batch_num}/{total_batches} of {file_path}"
+            )
 
         # Write attributes for the entire file, maintaining line order
         write_attribute_file(args, all_results, file_documents, workspace_s3)
-        logger.info(f"Completed processing file {file_index+1}/{len(file_documents)}: {file_path}")
+        logger.info(
+            f"Completed processing file {file_index+1}/{len(file_documents)}: {file_path}"
+        )
 
     logger.info(f"Processing complete - processed {len(file_documents)} files")
 

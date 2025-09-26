@@ -588,7 +588,11 @@ def submit_beaker_job(args):
     args_list = [arg for arg in sys.argv[1:] if arg != "--beaker"]
 
     # Take out the --pdfs [arg] or --pdfs=[arg], since the queue is populated locally
-    args_list = [arg for i, arg in enumerate(args_list) if not (arg.startswith("--pdfs") or (i > 0 and args_list[i - 1] == "--pdfs"))]
+    args_list = [
+        arg
+        for i, arg in enumerate(args_list)
+        if not (arg.startswith("--pdfs") or (i > 0 and args_list[i - 1] == "--pdfs"))
+    ]
 
     try:
         b.secret.get(f"{owner}-WEKA_ACCESS_KEY_ID", args.beaker_workspace)
@@ -656,9 +660,17 @@ def submit_beaker_job(args):
                 ),
                 image=ImageSource(beaker=beaker_image),
                 command=["python", "scripts/tagging_pipeline_v2.py"] + args_list,
-                env_vars=[EnvVar(name="BEAKER_JOB_NAME", value=task_name), EnvVar(name="OWNER", value=owner)] + env_var_secrets,
+                env_vars=[
+                    EnvVar(name="BEAKER_JOB_NAME", value=task_name),
+                    EnvVar(name="OWNER", value=owner),
+                ]
+                + env_var_secrets,
                 resources=TaskResources(gpu_count=1),
-                constraints=Constraints(cluster=args.beaker_cluster if isinstance(args.beaker_cluster, list) else [args.beaker_cluster]),
+                constraints=Constraints(
+                    cluster=args.beaker_cluster
+                    if isinstance(args.beaker_cluster, list)
+                    else [args.beaker_cluster]
+                ),
                 result=ResultSpec(path="/noop-results"),
             )
         ],
@@ -674,20 +686,57 @@ async def main():
     parser.add_argument("dataset", help="Dolma dataset root (local or s3://) with documents/ folder")
     parser.add_argument("scratch", help="Scratch workspace (local dir or s3://)")
     parser.add_argument("--workers", type=int, default=4, help="Number of concurrent workers")
-    parser.add_argument("--parallel_requests", type=int, default=800, help="Max number of parallel requests to send to model")
-    parser.add_argument("--model", default="google/gemma-3-4b-it", help="Model path or name, hugging face or local path format")
-    parser.add_argument("--attribute_name", default="model_pii_tagging_v2", help="Path to use for attribute naming")
+    parser.add_argument(
+        "--parallel_requests",
+        type=int,
+        default=800,
+        help="Max number of parallel requests to send to model",
+    )
+    parser.add_argument(
+        "--model",
+        default="google/gemma-3-4b-it",
+        help="Model path or name, hugging face or local path format",
+    )
+    parser.add_argument(
+        "--attribute_name",
+        default="model_pii_tagging_v2",
+        help="Path to use for attribute naming",
+    )
 
     # Beaker/job running stuff
-    parser.add_argument("--beaker", action="store_true", help="Submit this job to beaker instead of running locally")
-    parser.add_argument("--beaker_workspace", help="Beaker workspace to submit to", default="ai2/olmocr")
+    parser.add_argument(
+        "--beaker",
+        action="store_true",
+        help="Submit this job to beaker instead of running locally",
+    )
+    parser.add_argument(
+        "--beaker_workspace",
+        help="Beaker workspace to submit to",
+        default="ai2/olmocr",
+    )
     parser.add_argument(
         "--beaker_cluster",
         help="Beaker clusters you want to run on",
-        default=["ai2/jupiter-cirrascale-2", "ai2/ceres-cirrascale", "ai2/neptune-cirrascale", "ai2/saturn-cirrascale", "ai2/augusta-google-1"],
+        default=[
+            "ai2/jupiter-cirrascale-2",
+            "ai2/ceres-cirrascale",
+            "ai2/neptune-cirrascale",
+            "ai2/saturn-cirrascale",
+            "ai2/augusta-google-1",
+        ],
     )
-    parser.add_argument("--beaker_gpus", type=int, default=1, help="Number of gpu replicas to run")
-    parser.add_argument("--beaker_priority", type=str, default="normal", help="Beaker priority level for the job")
+    parser.add_argument(
+        "--beaker_gpus",
+        type=int,
+        default=1,
+        help="Number of gpu replicas to run",
+    )
+    parser.add_argument(
+        "--beaker_priority",
+        type=str,
+        default="normal",
+        help="Beaker priority level for the job",
+    )
 
     parser.add_argument("--port", type=int, default=30024, help="Port for Model server")
     args = parser.parse_args()
