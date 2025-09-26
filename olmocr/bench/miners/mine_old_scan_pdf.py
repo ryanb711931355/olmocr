@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import json
 import os
 import time
@@ -38,7 +39,7 @@ def process_jsonl(jsonl_file, output_dir="downloaded_images"):
 
             except json.JSONDecodeError:
                 print(f"Line {line_num}: Invalid JSON, skipping...")
-            except Exception as e:
+            except (IOError, OSError, KeyError) as e:
                 print(f"Line {line_num}: Error processing - {str(e)}")
 
 
@@ -97,7 +98,7 @@ def download_image(url, output_filename, output_dir):
 
         return output_path
 
-    except Exception as e:
+    except (IOError, OSError, requests.RequestException) as e:
         print(f"Error downloading image: {str(e)}")
         return None
 

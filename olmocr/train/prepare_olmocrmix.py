@@ -4,7 +4,6 @@ import tarfile
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from os import PathLike
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 from huggingface_hub import snapshot_download
@@ -17,12 +16,12 @@ def extract_tarball(tarball_path: Path, extract_dir: Path) -> int:
         with tarfile.open(tarball_path, "r") as tar:
             tar.extractall(extract_dir)
             return len(tar.getmembers())
-    except Exception as e:
+    except tarfile.TarError as e:
         print(f"Error extracting {tarball_path}: {e}")
         return 0
 
 
-def prepare_olmocr_mix(dataset_path: str, subset: str, split: str, destination: str | PathLike, max_examples: Optional[int] = None) -> str:
+def prepare_olmocr_mix(dataset_path: str, subset: str, split: str, destination: str | PathLike, max_examples: int | None = None) -> str:
     """
     Prepare OLMoCR mix dataset by downloading from HuggingFace and organizing into a folder structure.
 

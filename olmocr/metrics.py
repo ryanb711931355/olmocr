@@ -1,7 +1,7 @@
 import asyncio
 import time
 from collections import defaultdict, deque
-from typing import Any, Deque, Dict, List, Set
+from typing import Any
 
 
 class MetricsKeeper:

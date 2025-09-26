@@ -18,10 +18,13 @@ from olmocr.data.renderpdf import render_pdf_to_base64png
 from olmocr.prompts import build_finetuning_prompt
 from olmocr.prompts.anchor import get_anchor_text
 
+logger = logging.getLogger(__name__)
+
 
 def setup_logging():
     """Configure logging for the script."""
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
+    logger.info("Logging configured.")
 
 
 def is_s3_path(path):
@@ -107,7 +110,7 @@ def process_file(input_file: str, output_file: str, rewrite_prompt_str: bool, pd
                 try:
                     obj = json.loads(line)
                 except json.JSONDecodeError as e:
-                    logging.error(f"JSON decode error in file {input_file} at line {line_number}: {e}")
+                    logger.error(f"JSON decode error in file {input_file} at line {line_number}: {e}")
                     error_count += 1
                     continue
 
@@ -128,7 +131,7 @@ def process_file(input_file: str, output_file: str, rewrite_prompt_str: bool, pd
                             s3_path = goldkey[: goldkey.rindex("-")]
                             page = int(goldkey[goldkey.rindex("-") + 1 :])
                         except (ValueError, IndexError) as e:
-                            logging.error(f"Could not parse the page number from custom_id {goldkey}: {e}")
+                            logger.error(f"Could not parse the page number from custom_id {goldkey}: {e}")
                             error_count += 1
                             continue
 
@@ -151,7 +154,7 @@ def process_file(input_file: str, output_file: str, rewrite_prompt_str: bool, pd
                             try:
                                 os.remove(local_pdf_path)
                             except OSError as remove_err:
-                                logging.error(f"Failed to remove temporary PDF file {local_pdf_path}: {remove_err}")
+                                logger.error(f"Failed to remove temporary PDF file {local_pdf_path}: {remove_err}")
 
                 if transformed is not None:
                     prompt_text = transformed["chat_messages"][0]["content"][0]["text"]
@@ -167,11 +170,11 @@ def process_file(input_file: str, output_file: str, rewrite_prompt_str: bool, pd
                 else:
                     error_count += 1
 
-        logging.info(f"Processed '{input_file}': {processed_count} records transformed, {error_count} errors.")
+        logger.info(f"Processed '{input_file}': {processed_count} records transformed, {error_count} errors.")
         return prompt_lengths
     except Exception as e:
-        logging.exception(e)
-        logging.error(f"Failed to process file {input_file}: {e}")
+        logger.exception(e)
+        logger.error(f"Failed to process file {input_file}: {e}")
         return []
 
 
@@ -277,10 +280,10 @@ def main():
     input_files = list_input_files(input_dir)
 
     if not input_files:
-        logging.warning(f"No JSONL files found in '{input_dir}'. Exiting.")
+        logger.warning(f"No JSONL files found in '{input_dir}'. Exiting.")
         sys.exit(0)
 
-    logging.info(f"Found {len(input_files)} JSONL files to process.")
+    logger.info(f"Found {len(input_files)} JSONL files to process.")
 
     # Prepare tasks for parallel processing
     tasks = []
@@ -302,9 +305,9 @@ def main():
                 prompt_lengths = future.result()
                 all_prompt_lengths.extend(prompt_lengths)
             except Exception as exc:
-                logging.error(f"File {input_file} generated an exception: {exc}")
+                logger.error(f"File {input_file} generated an exception: {exc}")
 
-    logging.info("All files have been processed.")
+    logger.info("All files have been processed.")
 
     # Plot histogram of prompt lengths
     if all_prompt_lengths:
@@ -313,14 +316,14 @@ def main():
         fig.update_yaxes(title="Frequency")
         try:
             fig.write_image("prompt_lengths_histogram.png")
-            logging.info("Histogram of prompt lengths has been saved to 'prompt_lengths_histogram.png'.")
+            logger.info("Histogram of prompt lengths has been saved to 'prompt_lengths_histogram.png'.")
         except Exception as e:
-            logging.error(f"Failed to save the histogram image: {e}")
-            logging.error("Please make sure that the 'kaleido' package is installed (pip install -U kaleido).")
+            logger.error(f"Failed to save the histogram image: {e}")
+            logger.error("Please make sure that the 'kaleido' package is installed (pip install -U kaleido).")
             fig.write_html("prompt_lengths_histogram.html")
-            logging.info("Histogram of prompt lengths has been saved to 'prompt_lengths_histogram.html'.")
+            logger.info("Histogram of prompt lengths has been saved to 'prompt_lengths_histogram.html'.")
     else:
-        logging.warning("No prompt lengths were collected; histogram will not be generated.")
+        logger.warning("No prompt lengths were collected; histogram will not be generated.")
 
 
 if __name__ == "__main__":

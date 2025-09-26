@@ -6,7 +6,6 @@ import json
 import random
 import time
 from io import BytesIO
-from typing import List, Optional, Tuple
 
 import torch
 import uvloop
@@ -89,7 +88,9 @@ def sample_mm_requests_qwen2vl(
         text = processor.apply_chat_template(data["chat_messages"], tokenize=False, add_generation_prompt=True)
 
         raw_b64 = data["chat_messages"][0]["content"][1]["image_url"]["url"]
-        _main_image = Image.open(BytesIO(base64.b64decode(raw_b64[raw_b64.find(",") + 1 :])))
+        _main_image = Image.open(
+            BytesIO(base64.b64decode(raw_b64[raw_b64.find(",") + 1 :]))
+        )
 
         # Process inputs using processor
         inputs = processor(
@@ -139,11 +140,20 @@ def sample_mm_requests_phi3(
 
     for data in tqdm(json_data):
         inputs = processor.tokenizer.apply_chat_template(
-            [{"role": "user", "content": "<|image_1|>\n" + data["chat_messages"][0]["content"][0]["text"]}], tokenize=True, add_generation_prompt=True
+            [
+                {
+                    "role": "user",
+                    "content": "<|image_1|>\n" + data["chat_messages"][0]["content"][0]["text"],
+                }
+            ],
+            tokenize=True,
+            add_generation_prompt=True,
         )
 
         raw_b64 = data["chat_messages"][0]["content"][1]["image_url"]["url"]
-        main_image = Image.open(BytesIO(base64.b64decode(raw_b64[raw_b64.find(",") + 1 :])))
+        main_image = Image.open(
+            BytesIO(base64.b64decode(raw_b64[raw_b64.find(",") + 1 :]))
+        )
 
         # tokens = inputs["input_ids"][0]
         tokens = inputs
@@ -185,7 +195,10 @@ def sample_mm_requests_molmo(
         raw_b64 = data["chat_messages"][0]["content"][1]["image_url"]["url"]
         main_image = Image.open(BytesIO(base64.b64decode(raw_b64[raw_b64.find(",") + 1 :])))
 
-        inputs = inputs = processor.process(images=[main_image], text=data["chat_messages"][0]["content"][0]["text"])
+        inputs = processor.process(
+            images=[main_image],
+            text=data["chat_messages"][0]["content"][0]["text"],
+        )
 
         # print(inputs)
 
@@ -308,27 +321,27 @@ def run_vllm(
 
 
 async def run_vllm_async(
-    requests: List[Tuple[str, int, int]],
+    requests: list[tuple[str, int, int]],
     model: str,
     tokenizer: str,
-    quantization: Optional[str],
+    quantization: str | None,
     tensor_parallel_size: int,
     seed: int,
     n: int,
     trust_remote_code: bool,
     dtype: str,
-    max_model_len: Optional[int],
+    max_model_len: int | None,
     enforce_eager: bool,
     kv_cache_dtype: str,
-    quantization_param_path: Optional[str],
+    quantization_param_path: str | None,
     device: str,
     enable_prefix_caching: bool,
     enable_chunked_prefill: bool,
     max_num_batched_tokens: int,
-    distributed_executor_backend: Optional[str],
+    distributed_executor_backend: str | None,
     gpu_memory_utilization: float = 0.9,
     num_scheduler_steps: int = 1,
-    download_dir: Optional[str] = None,
+    download_dir: str | None = None,
     load_format: str = EngineArgs.load_format,
     disable_async_output_proc: bool = False,
     disable_frontend_multiprocessing: bool = False,
@@ -363,8 +376,8 @@ async def run_vllm_async(
 
     async with build_async_engine_client_from_engine_args(engine_args, disable_frontend_multiprocessing) as llm:
         # Add the requests to the engine.
-        prompts: List[str] = []
-        sampling_params: List[SamplingParams] = []
+        prompts: list[str] = []
+        sampling_params: list[SamplingParams] = []
         for prompt, _, output_len in requests:
             prompts.append(prompt)
             sampling_params.append(
@@ -390,14 +403,16 @@ async def run_vllm_async(
 
 
 def run_hf(
-    requests: List[Tuple[str, int, int]],
+    requests: list[tuple[str, int, int]],
     model: str,
     tokenizer: PreTrainedTokenizerBase,
     n: int,
     max_batch_size: int,
     trust_remote_code: bool,
 ) -> float:
-    llm = AutoModelForCausalLM.from_pretrained(model, torch_dtype=torch.float16, trust_remote_code=trust_remote_code)
+    llm = AutoModelForCausalLM.from_pretrained(
+        model, torch_dtype=torch.float16, trust_remote_code=trust_remote_code
+    )
     if llm.config.model_type == "llama":
         # To enable padding in the HF backend.
         tokenizer.pad_token = tokenizer.eos_token
@@ -405,7 +420,7 @@ def run_hf(
 
     pbar = tqdm(total=len(requests))
     start = time.perf_counter()
-    batch: List[str] = []
+    batch: list[str] = []
     max_prompt_len = 0
     max_output_len = 0
     for i in range(len(requests)):
@@ -417,7 +432,10 @@ def run_hf(
         if len(batch) < max_batch_size and i != len(requests) - 1:
             # Check if we can add more requests to the batch.
             _, next_prompt_len, next_output_len = requests[i + 1]
-            if (max(max_prompt_len, next_prompt_len) + max(max_output_len, next_output_len)) <= 2048:
+            if (
+                max(max_prompt_len, next_prompt_len)
+                + max(max_output_len, next_output_len)
+            ) <= 2048:
                 # We can add more requests to the batch.
                 continue
 
@@ -445,7 +463,7 @@ def run_hf(
 
 
 def run_mii(
-    requests: List[Tuple[str, int, int]],
+    requests: list[tuple[str, int, int]],
     model: str,
     tensor_parallel_size: int,
     output_len: int,

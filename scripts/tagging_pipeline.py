@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Tagging pipeline for Dolma JSONL datasets.
 
@@ -18,7 +17,6 @@ import random
 import re
 import sys
 import time
-from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
@@ -214,7 +212,7 @@ async def apost(url, json_data):
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
@@ -282,8 +280,7 @@ async def process_file(args, worker_id: int, file_uri: str):
     if file_uri.startswith("s3://"):
         raw = await asyncio.to_thread(get_s3_bytes_with_backoff, dataset_s3, file_uri)
     else:
-        with open(file_uri, "rb") as f:
-            raw = f.read()
+        raw = await asyncio.to_thread(lambda: open(file_uri, "rb").read())
 
     # Decompress if needed
     if file_uri.endswith(".gz"):
@@ -517,12 +514,12 @@ async def check_server_ready():
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
+        except httpx.RequestError:
             logger.warning(f"Attempt {attempt}: Please wait for model server to become ready...")
 
         await asyncio.sleep(delay_sec)
 
-    raise Exception("model server did not become ready after waiting.")
+    raise RuntimeError("model server did not become ready after waiting.")
 
 
 async def download_model(model_name_or_path: str):
@@ -607,7 +604,7 @@ def submit_beaker_job(args):
         b.secret.get("OLMOCR_PREVIEW_HF_TOKEN", args.beaker_workspace)
         env_var_secrets.append(EnvVar(name="HF_TOKEN", secret="OLMOCR_PREVIEW_HF_TOKEN"))
     except SecretNotFound:
-        pass
+        logger.info("OLMOCR_PREVIEW_HF_TOKEN not found, skipping HF token setup.")
 
     try:
         b.secret.get("OE_DATA_GCS_SA_KEY", args.beaker_workspace)

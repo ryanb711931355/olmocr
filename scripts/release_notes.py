@@ -1,11 +1,9 @@
-# encoding: utf-8
-
 """
 Prepares markdown release notes for GitHub releases.
 """
 
+#!/usr/bin/env python3
 import os
-from typing import List, Optional
 
 import packaging.version
 

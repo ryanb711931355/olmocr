@@ -4,7 +4,6 @@ import glob
 import os
 import random
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import List
 from urllib.parse import urlparse
 
 import boto3
@@ -102,8 +101,8 @@ def process_pdf(pdf_path: str, first_n_pages: int, max_sample_pages: int, no_fil
             with open(single_png_path, "wb") as pngf:
                 pngf.write(base64.b64decode(b64png))
 
-        except Exception as e:
-            print(f"Error while processing {pdf_path}, page {page_num}: {e}")
+        except Exception:
+            print(f"Error while processing {pdf_path}, page {page_num}")
 
     return True
 

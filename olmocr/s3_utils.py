@@ -8,7 +8,8 @@ import posixpath
 import time
 from io import BytesIO, TextIOWrapper
 from pathlib import Path
-from typing import List, Optional
+from typing import List
+from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
@@ -138,14 +139,14 @@ def get_s3_bytes_with_backoff(s3_client, pdf_s3_path, max_retries: int = 8, back
                 logger.warning(f"Attempt {attempt+1} failed to get_s3_bytes for {pdf_s3_path}: {e}. Retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
                 attempt += 1
-        except Exception as e:
+        except (ClientError, OSError) as e:
             wait_time = backoff_factor**attempt
             logger.warning(f"Attempt {attempt+1} failed to get_s3_bytes for {pdf_s3_path}: {e}. Retrying in {wait_time} seconds...")
             time.sleep(wait_time)
             attempt += 1
 
     logger.error(f"Failed to get_s3_bytes for {pdf_s3_path} after {max_retries} retries.")
-    raise Exception("Failed to get_s3_bytes after retries")
+    raise RuntimeError("Failed to get_s3_bytes after retries")
 
 
 def put_s3_bytes(s3_client, s3_path: str, data: bytes):
@@ -240,7 +241,7 @@ def download_directory(model_choices: List[str], local_dir: str):
                 return
             else:
                 logger.warning(f"Unsupported model path scheme: {model_path}")
-        except Exception as e:
+        except (ValueError, OSError) as e:
             logger.error(f"Failed to download from {model_path}: {e}")
             continue
 

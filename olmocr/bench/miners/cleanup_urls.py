@@ -3,7 +3,6 @@ import argparse
 import json
 import re
 import sqlite3
-from typing import Optional
 
 
 def parse_pdf_hash(pretty_pdf_path: str) -> Optional[str]:
@@ -27,7 +26,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Rewrites all URLs in a dataset.jsonl file using a sql lite database lookup")
     parser.add_argument("jsonl", type=str, help="JSONL file containing s3 paths")
     parser.add_argument("--db", type=str, required=True, help="Path to sqlite database mapping internal s3 urls to external ones")
-    parser.add_argument("--force", action="store_true", help="Path to sqlite database mapping internal s3 urls to external ones")
+    parser.add_argument("--force", action="store_true", help="Force write the output file")
     args = parser.parse_args()
 
     data = []

@@ -17,7 +17,6 @@ import os
 import re
 import sys
 import time
-from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
@@ -118,7 +117,7 @@ async def _process_single_page(page_text: str) -> PIIClassification:
     # ---------- HTTP call ---------------------------------------------------
     try:
         status, body = await apost(url, json_data=query)
-    except Exception as e:
+    except (ConnectionError, TimeoutError, OSError) as e:
         logger.warning(f"Server network error: {e!s}")
         metrics.add_metrics(server_errors=1)
         return PIIClassification(primary_language="en", document_type="unknown", is_resume_cv=None, contains_pii=None)
@@ -219,8 +218,7 @@ async def apost(url, json_data):
             raise ConnectionError("Anything other than fixed content length responses are not implemented yet")
 
         return status_code, response_body
-    except Exception as e:
-        # Pass through errors
+    except (ConnectionError, ValueError, OSError) as e:
         raise e
     finally:
         # But just make sure to close the socket on your way out
@@ -228,7 +226,7 @@ async def apost(url, json_data):
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
@@ -296,8 +294,7 @@ async def process_file(args, worker_id: int, file_uri: str):
     if file_uri.startswith("s3://"):
         raw = await asyncio.to_thread(get_s3_bytes_with_backoff, dataset_s3, file_uri)
     else:
-        with open(file_uri, "rb") as f:
-            raw = f.read()
+        raw = await asyncio.to_thread(_read_file_bytes, file_uri)
 
     # Decompress if needed
     if file_uri.endswith(".gz"):
@@ -403,6 +400,7 @@ async def worker(args, work_queue: WorkQueue, semaphore: asyncio.Semaphore, work
 
         except Exception as exc:
             logger.exception(f"Worker {worker_id} exception: {exc!s}")
+            raise
         finally:
             semaphore.release()
 
@@ -482,7 +480,7 @@ async def server_task(model_name_or_path, args, semaphore):
                     last_semaphore_release = time.time()
                     logger.info("Semaphore released, allowing a worker to proceed.")
         except asyncio.CancelledError:
-            pass  # Clean up if the task is cancelled
+            logger.debug("Timeout task cancelled")
 
     # Start tasks to read stdout, stderr, and handle timeout logic
     stdout_task = asyncio.create_task(read_stream(proc.stdout))
@@ -531,7 +529,7 @@ async def check_server_ready():
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
+        except (httpx.RequestError, httpx.HTTPStatusError):
             logger.warning(f"Attempt {attempt}: Please wait for model server to become ready...")
 
         await asyncio.sleep(delay_sec)
@@ -543,14 +541,14 @@ async def download_model(model_name_or_path: str):
     if model_name_or_path.startswith("s3://") or model_name_or_path.startswith("gs://") or model_name_or_path.startswith("weka://"):
         logger.info(f"Downloading model directory from '{model_name_or_path}'")
         model_cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "olmocr", "model")
-        download_directory([model_name_or_path], model_cache_dir)
+        await asyncio.to_thread(download_directory, [model_name_or_path], model_cache_dir)
         return model_cache_dir
     elif os.path.isabs(model_name_or_path) and os.path.isdir(model_name_or_path):
         logger.info(f"Using local model path at '{model_name_or_path}'")
         return model_name_or_path
     else:
         logger.info(f"Downloading model with hugging face '{model_name_or_path}'")
-        snapshot_download(repo_id=model_name_or_path)
+        await asyncio.to_thread(snapshot_download, repo_id=model_name_or_path)
         return model_name_or_path
 
 
@@ -744,11 +742,11 @@ async def main():
     await work_queue.populate_queue(list(files), items_per_group=1)
 
     if args.beaker:
-        submit_beaker_job(args)
+        await asyncio.to_thread(submit_beaker_job, args)
         return
 
     # If you get this far, then you are doing inference and need a GPU
-    check_torch_gpu_available()
+    await asyncio.to_thread(check_torch_gpu_available)
 
     logger.info(f"Starting pipeline with PID {os.getpid()}")
 

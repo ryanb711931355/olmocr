@@ -17,7 +17,6 @@ import os
 import re
 import sys
 import time
-from typing import Optional
 from urllib.parse import urlparse
 
 import boto3
@@ -177,7 +176,7 @@ Only consider actual occurrences of the PII within the document shown.
     # ---------- HTTP call ---------------------------------------------------
     try:
         status, body = await apost(url, json_data=query)
-    except Exception as e:
+    except (ConnectionError, TimeoutError) as e:
         logger.warning(f"Server network error: {e!s}")
         metrics.add_metrics(server_errors=1)
         return RichPIIClassification(primary_language="en", document_type="unknown", is_public_document=False)
@@ -278,8 +277,7 @@ async def apost(url, json_data):
             raise ConnectionError("Anything other than fixed content length responses are not implemented yet")
 
         return status_code, response_body
-    except Exception as e:
-        # Pass through errors
+    except (ConnectionError, TimeoutError, ValueError) as e:
         raise e
     finally:
         # But just make sure to close the socket on your way out
@@ -287,7 +285,7 @@ async def apost(url, json_data):
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
@@ -510,6 +508,7 @@ async def worker(args, work_queue: WorkQueue, semaphore: asyncio.Semaphore, work
 
         except Exception as exc:
             logger.exception(f"Worker {worker_id} exception: {exc!s}")
+            raise
         finally:
             semaphore.release()
 
@@ -583,6 +582,8 @@ async def server_task(model_name_or_path, args, semaphore):
                 await process_line(line)
             except Exception as ex:
                 logger.warning(f"Got {ex} when reading log line from inference server, skipping")
+                raise
+                raise
 
     async def timeout_task():
         nonlocal last_running_req, last_queue_req, last_semaphore_release
@@ -643,8 +644,9 @@ async def check_server_ready():
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
-            logger.warning(f"Attempt {attempt}: Please wait for model server to become ready...")
+        except Exception as e:
+            logger.warning(f"Attempt {attempt}: Please wait for model server to become ready... {e}")
+            raise
 
         await asyncio.sleep(delay_sec)
 
@@ -733,7 +735,7 @@ def submit_beaker_job(args):
         b.secret.get("OLMOCR_PREVIEW_HF_TOKEN", args.beaker_workspace)
         env_var_secrets.append(EnvVar(name="HF_TOKEN", secret="OLMOCR_PREVIEW_HF_TOKEN"))
     except SecretNotFound:
-        pass
+        logger.info("OLMOCR_PREVIEW_HF_TOKEN not found, skipping HF token setup")
 
     try:
         b.secret.get("OE_DATA_GCS_SA_KEY", args.beaker_workspace)
@@ -815,13 +817,11 @@ async def main():
         if "AWS_CREDENTIALS_FILE" in os.environ:
             cred_path = os.path.join(os.path.expanduser("~"), ".aws", "credentials")
             os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-            with open(cred_path, "w") as f:
-                f.write(os.environ.get("AWS_CREDENTIALS_FILE"))
+            await asyncio.to_thread(lambda: _write_file(cred_path, os.environ.get("AWS_CREDENTIALS_FILE")))
         if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
             cred_path = os.path.join(os.path.expanduser("~"), ".gcs", "credentials")
             os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-            with open(cred_path, "w") as f:
-                f.write(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE"))
+            await asyncio.to_thread(lambda: _write_file(cred_path, os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE")))
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
         workspace_s3 = boto3.client("s3")
         dataset_s3 = boto3.client("s3")

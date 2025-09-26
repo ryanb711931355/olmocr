@@ -6,7 +6,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import boto3
 import pydantic
@@ -220,7 +220,7 @@ def get_random_pages(s3_client, result_files, count=30):
                 if len(random_pages) >= count:
                     break
 
-        except Exception as e:
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
             print(f"Error processing {result_file}: {e}")
             continue
 
@@ -228,7 +228,7 @@ def get_random_pages(s3_client, result_files, count=30):
     return random_pages
 
 
-def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api_key: str, openai_model: str) -> Optional[PIIAnnotation]:
+def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api_key: str, openai_model: str) -> PIIAnnotation | None:
     """Analyze a page using the ChatGPT vision model with structured outputs."""
     try:
         # Download PDF to temp file and render to image

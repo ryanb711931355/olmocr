@@ -23,10 +23,10 @@ import json
 import os
 import random
 import shutil
+import sys
 import tempfile
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
 
 import boto3
 import torch
@@ -258,7 +258,7 @@ def data_collator(batch):
 
 
 def compress_checkpoint(
-    source_path: str, dest_path: str, recipe_path: str, num_calibration_samples: int = 512, calibration_pdfs: Optional[List[str]] = None
+    source_path: str, dest_path: str, recipe_path: str, num_calibration_samples: int = 512, calibration_pdfs: list[str] | None = None
 ) -> None:
     """Compress OlmOCR checkpoint using FP8 quantization."""
     # Load model and tokenizer
@@ -406,4 +406,4 @@ Examples:
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

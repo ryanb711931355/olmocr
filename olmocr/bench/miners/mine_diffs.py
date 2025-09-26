@@ -6,7 +6,7 @@ import time
 from collections import Counter
 from difflib import SequenceMatcher
 
-import syntok.segmenter as segmenter
+import syntok.segmenter
 from google import genai
 from google.genai import types
 

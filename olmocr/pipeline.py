@@ -224,7 +224,7 @@ async def apost(url, json_data, api_key=None):
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
+            except Exception:
                 pass
 
 
@@ -395,7 +395,7 @@ async def process_pdf(args, worker_id: int, pdf_orig_path: str):
         try:
             reader = PdfReader(tf.name)
             num_pages = reader.get_num_pages()
-        except:
+        except Exception:
             logger.exception(f"Could not count number of pages for {pdf_orig_path}, aborting document")
             return None
 
@@ -526,7 +526,7 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
             for task in dolma_tasks:
                 try:
                     result = task.result()
-                except:
+                except Exception:
                     # some dolma doc creations may have failed
                     pass
 
@@ -657,7 +657,7 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
     def _kill_proc():
         try:
             proc.terminate()
-        except:
+        except Exception:
             logger.info("VLLM Process already terminated")
 
     atexit.register(_kill_proc)
@@ -755,7 +755,10 @@ async def vllm_server_host(model_name_or_path, args, semaphore, unknown_args=Non
     retry = 0
 
     while retry < MAX_RETRIES:
-        await vllm_server_task(model_name_or_path, args, semaphore, unknown_args)
+        try:
+            await vllm_server_task(model_name_or_path, args, semaphore, unknown_args)
+        except Exception:
+            logger.exception("VLLM server task failed")
         logger.warning("VLLM server task ended")
         retry += 1
 
@@ -795,8 +798,8 @@ async def vllm_server_ready(args):
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
-            logger.warning(f"Attempt {attempt}: Please wait for vllm server to become ready...")
+        except Exception as e:
+            logger.warning(f"Attempt {attempt}: Please wait for vllm server to become ready... {e}")
 
         await asyncio.sleep(delay_sec)
 
@@ -821,7 +824,7 @@ async def download_model(model_name_or_path: str, max_retries: int = 5):
                 logger.info(f"Downloading model with hugging face '{model_name_or_path}'")
                 snapshot_download(repo_id=model_name_or_path)
                 return model_name_or_path
-        except Exception:
+        except Exception as e:
             if retry == max_retries - 1:
                 raise  # Raise on final attempt and fail the job
 
@@ -887,6 +890,9 @@ def submit_beaker_job(args):
             open(os.path.join(os.path.expanduser("~"), ".aws", "credentials")).read(),
             args.beaker_workspace,
         )
+    except Exception:
+        logger.exception("Failed to retrieve or write Beaker secrets")
+        sys.exit(1)
 
     env_var_secrets = [
         EnvVar(name="WEKA_ACCESS_KEY_ID", secret=f"{owner}-WEKA_ACCESS_KEY_ID"),
@@ -899,6 +905,8 @@ def submit_beaker_job(args):
         env_var_secrets.append(EnvVar(name="HF_TOKEN", secret="OLMOCR_PREVIEW_HF_TOKEN"))
     except SecretNotFound:
         pass
+    except Exception:
+        logger.exception("Failed to retrieve or write Beaker secrets")
 
     try:
         b.secret.get("OE_DATA_GCS_SA_KEY", args.beaker_workspace)
@@ -916,6 +924,8 @@ def submit_beaker_job(args):
         if gcs_sa_key:
             b.secret.write("OE_DATA_GCS_SA_KEY", gcs_sa_key, args.beaker_workspace)
             env_var_secrets.append(EnvVar(name="GOOGLE_APPLICATION_CREDENTIALS_FILE", secret="OE_DATA_GCS_SA_KEY"))
+    except Exception:
+        logger.exception("Failed to retrieve or write Beaker secrets")
 
     # Create the experiment spec
     experiment_spec = ExperimentSpec(
@@ -1016,7 +1026,7 @@ def print_stats(args, root_work_queue):
             logger.warning(f"Error processing {s3_path}: {e}")
             return 0, 0, 0, 0, 0, set(), 0, 0
 
-    print(f"\nCompleted work items {completed_items:,} out of {total_items:,}: {completed_items/total_items*100:.2f}%")
+    print(f"\nCompleted work items {completed_items:,} out of {total_items:,}: {completed_items / total_items * 100:.2f}%")
     print("\nProcessing output files...")
     docs_total = 0
     input_tokens_total = 0
@@ -1041,7 +1051,16 @@ def print_stats(args, root_work_queue):
         futures = {executor.submit(process_output_file, item): item for item in done_work_items}
 
         for future in tqdm(as_completed(futures), total=len(futures)):
-            (doc_count, input_tokens, output_tokens, pages, fallback_pages, processed_paths, long_context_docs, long_context_tokens) = future.result()
+            (
+                doc_count,
+                input_tokens,
+                output_tokens,
+                pages,
+                fallback_pages,
+                processed_paths,
+                long_context_docs,
+                long_context_tokens,
+            ) = future.result()
             docs_total += doc_count
             input_tokens_total += input_tokens
             output_tokens_total += output_tokens
@@ -1065,11 +1084,13 @@ def print_stats(args, root_work_queue):
     print(f"Total pages processed: {pages_total:,}")
 
     print(f"\nTotal output tokens: {output_tokens_total:,}")
-    print(f"Projected output tokens: {round((output_tokens_total/max(1, completed_items))*total_items):,}")
+    print(
+        f"Projected output tokens: {round((output_tokens_total / max(1, completed_items)) * total_items):,}"
+    )
 
-    print(f"\nAverage pages per doc: {pages_total/max(1,docs_total):,.1f}")
-    print(f"Average output tokens per doc: {output_tokens_total/max(1,docs_total):,.1f}")
-    print(f"Average output tokens per page: {output_tokens_total/max(1,pages_total):,.1f}")
+    print(f"\nAverage pages per doc: {pages_total / max(1, docs_total):,.1f}")
+    print(f"Average output tokens per doc: {output_tokens_total / max(1, docs_total):,.1f}")
+    print(f"Average output tokens per page: {output_tokens_total / max(1, pages_total):,.1f}")
 
     # Print long context documents stats
     print(f"\nLong Context Documents (>{LONG_CONTEXT_THRESHOLD} tokens): {long_context_docs_count:,}")
@@ -1248,7 +1269,9 @@ async def main():
             avg_pages_per_pdf = 10  # Default to 10 pages per PDF if sampling fails
 
         items_per_group = max(1, int(args.pages_per_group / avg_pages_per_pdf))
-        logger.info(f"Calculated items_per_group: {items_per_group} based on average pages per PDF: {avg_pages_per_pdf:.2f}")
+        logger.info(
+            f"Calculated items_per_group: {items_per_group} based on average pages per PDF: {avg_pages_per_pdf:.2f}"
+        )
 
         # Now call populate_queue
         await work_queue.populate_queue(pdf_work_paths, items_per_group)

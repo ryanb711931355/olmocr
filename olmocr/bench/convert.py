@@ -67,20 +67,20 @@ async def process_pdf(pdf_path, page_num, method, kwargs, output_path, is_async)
         if markdown is None:
             print(f"Warning, did not get output for {os.path.basename(output_path)}")
             # Write blank to this file, so that it's marked as an error and not just skipped in evals
-            with open(output_path, "w") as out_f:
-                out_f.write("")
+            async with aiofiles.open(output_path, "w") as out_f:
+                await out_f.write("")
             return False
 
         # Write the markdown to the output file
-        with open(output_path, "w") as out_f:
-            out_f.write(markdown)
+        async with aiofiles.open(output_path, "w") as out_f:
+            await out_f.write(markdown)
 
         return True
     except Exception as ex:
         print(f"Exception {str(ex)} occurred while processing {os.path.basename(output_path)}")
         # Write blank to this file, so that it's marked as an error and not just skipped in evals
-        with open(output_path, "w") as out_f:
-            out_f.write("")
+        async with aiofiles.open(output_path, "w") as out_f:
+            await out_f.write("")
         return False
 
 
@@ -93,7 +93,7 @@ async def process_pdfs(config, pdf_directory, data_directory, repeats, remove_te
         print(f"Starting conversion using {candidate} with kwargs: {config[candidate]['kwargs']}")
         folder_name = config[candidate]["folder_name"]
         candidate_output_dir = os.path.join(data_directory, folder_name)
-        os.makedirs(candidate_output_dir, exist_ok=True)
+        await asyncio.to_thread(os.makedirs, candidate_output_dir, exist_ok=True)
 
         method = config[candidate]["method"]
         kwargs = config[candidate]["kwargs"]
@@ -155,10 +155,10 @@ async def process_pdfs(config, pdf_directory, data_directory, repeats, remove_te
                     output_filename = f"{base_name}_pg{page_num}_repeat{repeat}.md"
                     # Preserve the relative folder structure in the output directory
                     candidate_pdf_dir = os.path.join(candidate_output_dir, pdf_relative_dir)
-                    os.makedirs(candidate_pdf_dir, exist_ok=True)
+                    await asyncio.to_thread(os.makedirs, candidate_pdf_dir, exist_ok=True)
                     output_path = os.path.join(candidate_pdf_dir, output_filename)
 
-                    if os.path.exists(output_path) and not force:
+                    if await asyncio.to_thread(os.path.exists, output_path) and not force:
                         print(f"Skipping {base_name}_pg{page_num}_repeat{repeat} for {candidate}, file already exists")
                         print("Rerun with --force flag to force regeneration")
                         continue

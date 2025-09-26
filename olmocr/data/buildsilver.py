@@ -189,9 +189,6 @@ def main():
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
 
-    # Open the first file for writing
-    cur_file = open(cur_file_path, "w")
-
     # Counter to track PDFs that produce at least one output
     pdfs_with_output = 0
 

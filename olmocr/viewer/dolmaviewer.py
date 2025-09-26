@@ -157,7 +157,7 @@ def main(jsonl_paths, output_dir, template_path, s3_profile_name):
         for _ in tqdm(as_completed(futures), total=len(futures), desc="Processing documents"):
             pass  # Progress bar updates automatically
 
-    print(f"Output HTML-viewable pages to directory: {args.output_dir}")
+    print(f"Output HTML-viewable pages to directory: {output_dir}")
 
 
 if __name__ == "__main__":

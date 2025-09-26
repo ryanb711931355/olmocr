@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 analyze_documents.py - Analyze document layout and extract content from PDF documents.
 
@@ -20,7 +19,7 @@ import json
 import os
 import random
 import threading
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import boto3
 import pypdf
@@ -61,7 +60,7 @@ def download_pdf_from_s3(s3_path: str, local_path: str) -> bool:
         # Download file
         s3.download_file(bucket, key, local_path)
         return True
-    except Exception as e:
+    except (boto3.exceptions.S3UploadFailedError, botocore.exceptions.ClientError) as e:
         print(f"Error downloading {s3_path}: {str(e)}")
         return False
 
@@ -78,33 +77,29 @@ def extract_page_from_pdf(input_path: str, output_path: str, page_num: int) -> b
     Returns:
         bool: True if extraction was successful, False otherwise
     """
-    try:
-        # Ensure output directory exists
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # Ensure output directory exists
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        # Read the input PDF
-        reader = pypdf.PdfReader(input_path)
+    # Read the input PDF
+    reader = pypdf.PdfReader(input_path)
 
-        # Check if page number is valid
-        if page_num >= len(reader.pages):
-            print(f"Page number {page_num} out of range for {input_path} with {len(reader.pages)} pages")
-            return False
+    # Check if page number is valid
+    if page_num >= len(reader.pages):
+        print(f"Page number {page_num} out of range for {input_path} with {len(reader.pages)} pages")
+        return False
 
-        # Create a new PDF with just the selected page
-        writer = pypdf.PdfWriter()
-        writer.add_page(reader.pages[page_num])
+    # Create a new PDF with just the selected page
+    writer = pypdf.PdfWriter()
+    writer.add_page(reader.pages[page_num])
 
-        # Write the output PDF
-        with open(output_path, "wb") as output_file:
-            writer.write(output_file)
+    # Write the output PDF
+    with open(output_path, "wb") as output_file:
+        writer.write(output_file)
 
-        return True
-    except Exception as e:
-        print(f"Error extracting page {page_num} from {input_path}: {str(e)}")
-        raise
+    return True
 
 
-def analyze_document_layout(pdf_path: str, page_num: int, api_key: str) -> Optional[Tuple[Dict[str, Any], str]]:
+def analyze_document_layout(pdf_path: str, page_num: int, api_key: str) -> tuple[dict[str, Any], str] | None:
     """
     Use Gemini to analyze document layout features in a rendered PDF page.
 
@@ -114,7 +109,7 @@ def analyze_document_layout(pdf_path: str, page_num: int, api_key: str) -> Optio
         api_key: Gemini API key
 
     Returns:
-        Optional[Tuple[Dict[str, Any], str]]:
+        tuple[dict[str, Any], str] | None:
             A tuple with the layout analysis results as a dictionary and the base64 string of the rendered page image.
             Returns None if analysis fails.
     """
@@ -218,12 +213,12 @@ def analyze_document_layout(pdf_path: str, page_num: int, api_key: str) -> Optio
         # Return both the layout analysis and the rendered image (base64 string)
         return (layout_analysis, image_base64)
 
-    except Exception as e:
+    except (json.JSONDecodeError, Exception) as e:
         print(f"Error analyzing document layout in {pdf_path} page {page_num}: {str(e)}")
         return None
 
 
-def extract_document_content(pdf_path: str, page_num: int, image_base64: str, api_key: str) -> Optional[str]:
+def extract_document_content(pdf_path: str, page_num: int, image_base64: str, api_key: str) -> str | None:
     """
     Use Gemini to extract full document content from a rendered PDF page.
 
@@ -234,7 +229,7 @@ def extract_document_content(pdf_path: str, page_num: int, image_base64: str, ap
         api_key: Gemini API key
 
     Returns:
-        Optional[str]: The extracted document content in markdown format, or None if extraction fails.
+        str | None: The extracted document content in markdown format, or None if extraction fails.
     """
     # Initialize Gemini client
     client = genai.Client(
@@ -327,7 +322,7 @@ def should_extract_full_content(layout_analysis: Dict[str, Any]) -> bool:
     return False
 
 
-def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> Dict:
+def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> dict:
     """
     Process a single PDF from S3.
 
@@ -338,7 +333,7 @@ def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> D
         api_key: Gemini API key
 
     Returns:
-        Dict: Results of processing the PDF
+        dict: Results of processing the PDF
     """
     # Create a thread-specific temp directory to avoid conflicts
     thread_id = threading.get_ident()
@@ -423,7 +418,7 @@ def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> D
             os.remove(local_pdf_path)
 
 
-def process_pdfs_parallel(s3_paths: List[str], temp_dir: str, output_dir: str, api_key: str, max_docs: int, num_workers: int):
+def process_pdfs_parallel(s3_paths: list[str], temp_dir: str, output_dir: str, api_key: str, max_docs: int, num_workers: int):
     """
     Process PDFs in parallel using a thread pool.
 

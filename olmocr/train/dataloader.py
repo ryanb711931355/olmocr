@@ -11,8 +11,6 @@ from pathlib import Path
 from typing import (
     Any,
     Dict,
-    List,
-    Optional,
     Tuple,
     Type,
     TypeAlias,
@@ -75,8 +73,8 @@ def validate_pdf_pair(md_path: Path) -> Tuple[Optional[Dict[str, Path]], Optiona
 
                 return {"markdown_path": md_path, "pdf_path": pdf_path}, None
 
-            except Exception as e:
-                return None, (pdf_path, f"Failed to load: {str(e)}")
+            except Exception:
+                return None, (pdf_path, f"Failed to load: {pdf_path}")
 
     return None, None
 
@@ -134,9 +132,9 @@ class BaseMarkdownPDFDataset(Dataset):
                         elif invalid_pdf_info:
                             invalid_pdfs.append(invalid_pdf_info)
 
-                    except Exception as e:
-                        logger.error(f"Error processing {md_path}: {str(e)}")
-                        invalid_pdfs.append((md_path.with_suffix(".pdf"), f"Processing error: {str(e)}"))
+                    except Exception:
+                        logger.error(f"Error processing {md_path}")
+                        invalid_pdfs.append((md_path.with_suffix(".pdf"), f"Processing error: {md_path}"))
 
                     pbar.update(1)
 
@@ -268,8 +266,8 @@ class FrontMatterParser(PipelineStep):
         # Parse front matter to dataclass if specified
         try:
             page_data = self._parse_front_matter(front_matter, text)
-        except Exception as e:
-            raise ValueError(f"Error parsing front matter for {sample['markdown_path']}: {e}")
+        except Exception:
+            raise ValueError(f"Error parsing front matter for {sample['markdown_path']}")
 
         # Only add page_data field
         sample["page_data"] = page_data
@@ -440,7 +438,7 @@ class RotationAugmentation(PipelineStep):
 
     probability: float = 0.5  # Probability of applying rotation
 
-    def __call__(self, sample: Sample) -> Optional[Sample]:
+    def __call__(self, sample: Sample) -> Sample | None:
         """Randomly rotate image and update rotation metadata."""
         # Only proceed with given probability
         if np.random.random() > self.probability:
@@ -501,7 +499,7 @@ class RotationAugmentation(PipelineStep):
 class FilterOutRotatedDocuments(PipelineStep):
     """Pipeline step that filters out documents with rotation issues."""
 
-    def __call__(self, sample: Sample) -> Optional[Sample]:
+    def __call__(self, sample: Sample) -> Sample | None:
         """Filter out samples where rotation is invalid or rotation correction is needed."""
         # Check if page_data exists
         if "page_data" not in sample:
@@ -526,7 +524,7 @@ class AugraphyBasicAugmentations(PipelineStep):
 
     probability: float = 0.5  # Overall probability of applying any augmentation
 
-    def __call__(self, sample: Sample) -> Optional[Sample]:
+    def __call__(self, sample: Sample) -> Sample | None:
         """Apply augraphy augmentations to the image in the sample."""
         # Check that the image data exists
         if "image" not in sample:
@@ -1014,8 +1012,8 @@ if __name__ == "__main__":
                         total_length = len(labels)
                         return (idx, total_length, None)
                     return (idx, None, "No labels in sample")
-                except Exception as e:
-                    return (idx, None, str(e))
+                except Exception:
+                    return (idx, None, "Error processing sample")
 
             # Process samples in parallel with progress bar
             sequence_lengths = []
@@ -1045,8 +1043,8 @@ if __name__ == "__main__":
                                 if sequence_length > max_sequence_length:
                                     max_sequence_length = sequence_length
                                     max_sequence_sample_idx = idx
-                        except Exception as e:
-                            errors.append((idx, f"Future error: {e}"))
+                        except Exception:
+                            errors.append((idx, f"Future error: {idx}"))
                         pbar.update(1)
 
             if errors:

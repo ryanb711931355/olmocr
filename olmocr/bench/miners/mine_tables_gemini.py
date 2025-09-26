@@ -20,7 +20,7 @@ import concurrent.futures
 import os
 import random
 import threading
-from typing import Dict, List, Optional, Tuple
+from typing import Tuple
 
 import boto3
 import numpy as np
@@ -65,7 +65,7 @@ def download_pdf_from_s3(s3_path: str, local_path: str) -> bool:
         # Download file
         s3.download_file(bucket, key, local_path)
         return True
-    except Exception as e:
+    except (boto3.exceptions.S3UploadFailedError, botocore.exceptions.ClientError) as e:
         print(f"Error downloading {s3_path}: {str(e)}")
         return False
 
@@ -103,12 +103,12 @@ def extract_page_from_pdf(input_path: str, output_path: str, page_num: int) -> b
             writer.write(output_file)
 
         return True
-    except Exception as e:
+    except (pypdf.errors.PdfReadError, IOError) as e:
         print(f"Error extracting page {page_num} from {input_path}: {str(e)}")
         raise
 
 
-def detect_tables(pdf_path: str, page_num: int, api_key: str) -> Optional[Tuple[List[np.ndarray], str]]:
+def detect_tables(pdf_path: str, page_num: int, api_key: str) -> tuple[list[np.ndarray], str] | None:
     """
     Use Gemini to detect tables in a rendered PDF page.
 
@@ -118,7 +118,7 @@ def detect_tables(pdf_path: str, page_num: int, api_key: str) -> Optional[Tuple[
         api_key: Gemini API key
 
     Returns:
-        Optional[Tuple[List[np.ndarray], str]]:
+        tuple[list[np.ndarray], str] | None:
             A tuple with a list of detected tables (as numpy arrays) and the base64 string of the rendered page image.
             Returns None if detection fails.
     """
@@ -292,7 +292,7 @@ def generate_table_tests(tables: List[np.ndarray], pdf_image: str, api_key: str,
     return tests
 
 
-def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> List[TableTest]:
+def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> list[TableTest]:
     """
     Process a single PDF from S3.
 
@@ -303,7 +303,7 @@ def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> L
         api_key: Gemini API key
 
     Returns:
-        List[TableTest]: List of generated table tests
+        list[TableTest]: List of generated table tests
     """
     # Create a thread-specific temp directory to avoid conflicts
     thread_id = threading.get_ident()
@@ -394,8 +394,7 @@ def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> L
         if os.path.exists(local_pdf_path):
             os.remove(local_pdf_path)
 
-
-def process_pdfs_parallel(s3_paths: List[str], temp_dir: str, output_dir: str, api_key: str, max_tests: int, num_workers: int):
+def process_pdfs_parallel(s3_paths: list[str], temp_dir: str, output_dir: str, api_key: str, max_tests: int, num_workers: int):
     """
     Process PDFs in parallel using a thread pool.
 

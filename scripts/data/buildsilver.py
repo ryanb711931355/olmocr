@@ -4,7 +4,6 @@ import json
 import os
 import random
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Generator
 from urllib.parse import urlparse
 
 import boto3

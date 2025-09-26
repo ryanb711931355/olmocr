@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Rich Autoscan Dolma Documents with ChatGPT Vision
 
@@ -227,7 +226,7 @@ def load_document_file(s3_client, file_path):
 
         # Return the decoded lines
         return file_bytes.decode("utf-8").strip().split("\n")
-    except Exception as e:
+    except (IOError, OSError, UnicodeDecodeError, zstd.ZstdError) as e:
         logger.error(f"Error loading file {file_path}: {e}")
         return []
 
@@ -279,7 +278,7 @@ def get_document_info_from_line(line, file_path, line_index):
     except json.JSONDecodeError:
         logger.warning(f"Invalid JSON in {file_path} line {line_index}")
         return None
-    except Exception as e:
+    except (KeyError, IndexError, TypeError) as e:
         logger.warning(f"Error processing document in {file_path} line {line_index}: {e}")
         return None
 
@@ -310,7 +309,7 @@ def get_all_pages(s3_client, document_files):
     return file_contents
 
 
-def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api_key: str, openai_model: str) -> Optional[PIIAnnotation]:
+def chatgpt_analyze_page(pdf_path: str, page_num: int, pdf_s3_client, openai_api_key: str, openai_model: str) -> PIIAnnotation | None:
     """Analyze a page using the ChatGPT vision model with structured outputs."""
     try:
         # Download PDF to temp file and render to image
@@ -371,7 +370,10 @@ Only consider actual occurrences of the PII within the document shown.
             messages=[
                 {
                     "role": "user",
-                    "content": [{"type": "text", "text": user_message}, {"type": "image_url", "image_url": {"url": f"data:image/webp;base64,{base64_image}"}}],
+                    "content": [
+                        {"type": "text", "text": user_message},
+                        {"type": "image_url", "image_url": {"url": f"data:image/webp;base64,{base64_image}"}},
+                    ],
                 }
             ],
             response_format=PIIAnnotation,
@@ -532,7 +534,7 @@ def write_attribute_file(args, processed_docs, file_documents, workspace_s3):
                     fh.write(payload)
                 logger.info(f"Wrote {len(file_entries)} attribute entries to {out_path}")
 
-        except Exception as e:
+        except (IOError, OSError) as e:
             logger.error(f"Error writing attributes for {source_file}: {e}")
             continue
 
@@ -549,7 +551,12 @@ def save_results(results, output_dir):
         serializable_results.append(result)
 
     with open(output_path, "w") as f:
-        json.dump(serializable_results, f, indent=2, default=lambda o: o.value if isinstance(o, Enum) else o)
+        json.dump(
+            serializable_results,
+            f,
+            indent=2,
+            default=lambda o: o.value if isinstance(o, Enum) else o,
+        )
 
     print(f"Results saved to {output_path}")
 
@@ -633,6 +640,7 @@ def main():
                         results.append(result)
                     except Exception as e:
                         logger.error(f"Error processing document: {e}")
+                        continue
 
             # Save results for this batch
             batch_output_dir = os.path.join(args.output_dir, f"file_{file_index+1}_batch_{batch_num}")

@@ -1,6 +1,6 @@
 import glob
 import os
-from typing import Dict, List, Tuple
+from typing import Tuple
 
 from tqdm import tqdm
 
@@ -10,7 +10,7 @@ from .tests import BasePDFTest
 
 
 def generate_html_report(
-    test_results_by_candidate: Dict[str, Dict[str, Dict[int, List[Tuple[BasePDFTest, bool, str]]]]], pdf_folder: str, output_file: str
+    test_results_by_candidate: dict[str, dict[str, dict[int, list[Tuple[BasePDFTest, bool, str]]]]], pdf_folder: str, output_file: str
 ) -> None:
     """
     Generate a simple static HTML report of test results.
@@ -191,7 +191,7 @@ def generate_html_report(
                         html += """        <h4>PDF Render:</h4>\n"""
                         image_data = render_pdf_to_base64webp(pdf_path, page, 1024)
                         html += f"""        <img class="pdf-image" alt="PDF Page {page}" src="data:image/webp;base64,{image_data}" />\n"""
-                    except Exception as e:
+                    except OSError as e:
                         html += f"""        <p>Error rendering PDF: {str(e)}</p>\n"""
 
                     # Get the Markdown content for this page
@@ -203,7 +203,7 @@ def generate_html_report(
                             md_file_path = md_files[0]  # Use the first repeat as an example
                             with open(md_file_path, "r", encoding="utf-8") as f:
                                 md_content = f.read()
-                    except Exception as e:
+                    except OSError as e:
                         md_content = f"Error loading Markdown content: {str(e)}"
 
                     if md_content:

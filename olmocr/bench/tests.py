@@ -5,7 +5,6 @@ import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple, Union
 
 import numpy as np
 from bs4 import BeautifulSoup
@@ -110,7 +109,7 @@ class ValidationError(Exception):
     pass
 
 
-def normalize_text(md_content: str) -> str:
+def normalize_text(md_content: str | None) -> str | None:
     if md_content is None:
         return None
 
@@ -252,7 +251,7 @@ def parse_markdown_tables(md_content: str) -> List[TableData]:
     return parsed_tables
 
 
-def _process_table_lines(table_lines: List[str]) -> List[List[str]]:
+def _process_table_lines(table_lines: list[str]) -> list[list[str]]:
     """
     Process a list of lines that potentially form a markdown table.
 
@@ -298,7 +297,7 @@ def _process_table_lines(table_lines: List[str]) -> List[List[str]]:
     return table_data
 
 
-def parse_html_tables(html_content: str) -> List[TableData]:
+def parse_html_tables(html_content: str) -> list[TableData]:
     """
     Extract and parse all HTML tables from the provided content.
     Identifies header rows and columns, and maps them properly handling rowspan/colspan.
@@ -524,8 +523,8 @@ class TextPresenceTest(BasePDFTest):
 
     text: str
     case_sensitive: bool = True
-    first_n: Optional[int] = None
-    last_n: Optional[int] = None
+    first_n: int | None = None
+    last_n: int | None = None
 
     def __post_init__(self):
         super().__post_init__()
@@ -867,7 +866,7 @@ class BaselineTest(BasePDFTest):
 
     """
 
-    max_length: Optional[int] = None  # Used to implement blank page checks
+    max_length: int | None = None  # Used to implement blank page checks
 
     max_repeats: int = 30
     check_disallowed_characters: bool = True
@@ -1015,7 +1014,7 @@ def load_single_test(data: Union[str, Dict]) -> BasePDFTest:
     return test
 
 
-def load_tests(jsonl_file: str) -> List[BasePDFTest]:
+def load_tests(jsonl_file: str) -> list[BasePDFTest]:
     """
     Load tests from a JSONL file using parallel processing with a ThreadPoolExecutor.
 
@@ -1026,7 +1025,7 @@ def load_tests(jsonl_file: str) -> List[BasePDFTest]:
         A list of test objects.
     """
 
-    def process_line_with_number(line_tuple: Tuple[int, str]) -> Optional[Tuple[int, BasePDFTest]]:
+    def process_line_with_number(line_tuple: tuple[int, str]) -> tuple[int, BasePDFTest] | None:
         """
         Process a single line from the JSONL file and return a tuple of (line_number, test object).
         Returns None for empty lines.
@@ -1047,7 +1046,7 @@ def load_tests(jsonl_file: str) -> List[BasePDFTest]:
             raise
         except Exception as e:
             print(f"Unexpected error on line {line_number}: {e}")
-            raise
+            raise RuntimeError(f"Unexpected error on line {line_number}: {e}") from e
 
     tests = []
 
@@ -1076,7 +1075,7 @@ def load_tests(jsonl_file: str) -> List[BasePDFTest]:
     return tests
 
 
-def save_tests(tests: List[BasePDFTest], jsonl_file: str) -> None:
+def save_tests(tests: list[BasePDFTest], jsonl_file: str) -> None:
     """
     Save tests to a JSONL file using asdict for conversion.
 

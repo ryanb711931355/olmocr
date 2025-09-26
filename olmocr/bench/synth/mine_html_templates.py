@@ -905,7 +905,8 @@ def main():
 
     # Initialize synthetic.json as a JSONL file (empty initially)
     synthetic_json_path = os.path.join(args.output_dir, "synthetic.jsonl")
-    open(synthetic_json_path, "w").close()  # Create empty file
+    with open(synthetic_json_path, "w") as f:
+        pass
 
     # Counter for test statistics
     test_counter = 0

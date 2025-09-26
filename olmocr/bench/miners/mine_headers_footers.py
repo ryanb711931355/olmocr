@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 mine_headers_footers.py - Extract headers and footers from PDF documents.
 
@@ -18,7 +17,7 @@ import base64
 import json
 import os
 import random
-from typing import List, Optional
+from typing import List
 
 import boto3
 import pypdf
@@ -57,8 +56,11 @@ def download_pdf_from_s3(s3_path: str, local_path: str) -> bool:
         # Download file
         s3.download_file(bucket, key, local_path)
         return True
-    except Exception as e:
+    except boto3.exceptions.S3UploadFailedError as e:
         print(f"Error downloading {s3_path}: {str(e)}")
+        return False
+    except Exception as e:
+        print(f"Unexpected error downloading {s3_path}: {str(e)}")
         return False
 
 
@@ -95,12 +97,18 @@ def extract_page_from_pdf(input_path: str, output_path: str, page_num: int) -> b
             writer.write(output_file)
 
         return True
+    except pypdf.errors.PdfReadError as e:
+        print(f"Error reading PDF {input_path}: {str(e)}")
+        raise
+    except IOError as e:
+        print(f"Error writing PDF {output_path}: {str(e)}")
+        raise
     except Exception as e:
         print(f"Error extracting page {page_num} from {input_path}: {str(e)}")
         raise
 
 
-def detect_headers_footers(pdf_path: str, page_num: int, api_key: str) -> Optional[List[str]]:
+def detect_headers_footers(pdf_path: str, page_num: int, api_key: str) -> list[str] | None:
     """
     Use Gemini to detect headers and footers in a rendered PDF page.
 
@@ -110,7 +118,7 @@ def detect_headers_footers(pdf_path: str, page_num: int, api_key: str) -> Option
         api_key: Gemini API key
 
     Returns:
-        Optional[List[str]]: List of detected header/footer texts, or None if detection failed
+        list[str] | None: List of detected header/footer texts, or None if detection failed
     """
     client = genai.Client(
         api_key=os.environ.get("GEMINI_API_KEY"),
@@ -173,7 +181,7 @@ def detect_headers_footers(pdf_path: str, page_num: int, api_key: str) -> Option
     return data.get("headers", []) + data.get("footers", [])
 
 
-def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str, tests: List[TextPresenceTest]) -> None:
+def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str, tests: list[TextPresenceTest]) -> None:
     """
     Process a single PDF from S3.
 

@@ -428,7 +428,7 @@ def main():
         prepare_checkpoints(sources, destination)
     except Exception as e:
         print(f"\n❌ Error: {e}")
-        return 1
+        raise SystemExit(1)
 
     return 0
 

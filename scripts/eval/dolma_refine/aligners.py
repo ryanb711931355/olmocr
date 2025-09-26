@@ -1,5 +1,3 @@
-from typing import Type
-
 from sequence_align.pairwise import hirschberg, needleman_wunsch
 
 from .registry import BaseRegistry

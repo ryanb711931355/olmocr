@@ -23,7 +23,6 @@ import re
 import subprocess
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, List
 
 import pypdf
 from anthropic import Anthropic
@@ -119,7 +118,7 @@ def generate_html_from_image(client, image_base64):
                 initial_html += content.text
 
         return extract_code_block(initial_html)
-    except Exception as e:
+    except anthropic.APIError as e:
         print(f"Error calling Claude API: {e}")
         return None
 
@@ -223,7 +222,7 @@ async def render_pdf_with_playwright(html_content, output_pdf_path, png_width, p
                         return True
                     else:
                         print(f"PDF has {len(reader.pages)} pages with scale factor {scale}, trying a smaller scale...")
-                except Exception as pdf_check_error:
+                except pypdf.errors.PdfReadError as pdf_check_error:
                     print(f"Error checking PDF page count: {pdf_check_error}")
                     return False
 
@@ -255,7 +254,7 @@ def process_pdf(pdf_info, args, client):
             print(f"PDF has no pages: {local_pdf_path}")
             return None
         page_num = random.randint(1, num_pages)
-    except Exception as e:
+    except pypdf.errors.PdfReadError as e:
         print(f"Error reading {local_pdf_path}: {e}")
         return None
 
@@ -270,7 +269,7 @@ def process_pdf(pdf_info, args, client):
         if not html_content:
             print(f"Failed to generate HTML for {local_pdf_path}, page {page_num}")
             return None
-    except Exception as e:
+    except anthropic.APIError as e:
         print(f"Error generating HTML for {local_pdf_path}: {e}")
         return None
 
@@ -283,7 +282,7 @@ def process_pdf(pdf_info, args, client):
     try:
         with open(html_path, "w") as f:
             f.write(html_content)
-    except Exception as e:
+    except OSError as e:
         print(f"Error saving HTML for {local_pdf_path}: {e}")
         return None
 
@@ -315,7 +314,7 @@ def process_pdf(pdf_info, args, client):
     try:
         if os.path.exists(temp_pdf_dir):
             subprocess.run(["rm", "-rf", temp_pdf_dir])
-    except Exception as e:
+    except OSError as e:
         print(f"Error cleaning up temp directory {temp_pdf_dir}: {e}")
 
     return {
@@ -373,7 +372,10 @@ def main():
     file_lock = threading.Lock()
 
     with ThreadPoolExecutor(max_workers=args.parallel) as executor:
-        futures = {executor.submit(process_pdf, (pdf_path, i), args, client): pdf_path for i, pdf_path in enumerate(pdf_paths)}
+        futures = {
+            executor.submit(process_pdf, (pdf_path, i), args, client): pdf_path
+            for i, pdf_path in enumerate(pdf_paths)
+        }
         for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing PDFs"):
             pdf_path = futures[future]
             try:

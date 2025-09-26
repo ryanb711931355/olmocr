@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""
+#"""
 Compare PII Detection Rules and Calculate IoU
 
 This script processes documents and their attributes from S3 or local storage,
@@ -319,7 +318,7 @@ def load_jsonl_file(file_path, s3_client=None):
         lines = decompressed.decode("utf-8").strip().split("\n")
         return [json.loads(line) for line in lines if line.strip()]
 
-    except Exception as e:
+    except (ValueError, json.JSONDecodeError, OSError, zstd.ZstdError) as e:
         logger.error(f"Error loading file {file_path}: {e}")
         return []
 
@@ -428,7 +427,7 @@ def load_documents_and_attributes(docs_folder, attr_folder, s3_client=None, recu
                         if "attributes" not in doc:
                             doc["attributes"] = {}
                         merged_docs.append(doc)
-            except Exception as e:
+            except (IOError, KeyError, TypeError, ValueError) as e:
                 logger.error(f"Error processing document file {doc_path}: {e}")
                 continue
 
@@ -490,10 +489,10 @@ def load_documents_and_attributes(docs_folder, attr_folder, s3_client=None, recu
 
                             logger.info(f"Matched attributes for {docs_matched_in_file} documents from {basename} in {subdir}")
 
-                    except Exception as e:
+                    except (IOError, KeyError, TypeError, ValueError) as e:
                         logger.error(f"Error processing attribute file {attr_path}: {e}")
                         continue
-            except Exception as e:
+            except (IOError, KeyError, TypeError, ValueError) as e:
                 logger.error(f"Error processing attribute subdirectory {subdir}: {e}")
                 continue
 
@@ -960,8 +959,8 @@ class Parser:
 
     def match(self, *types):
         """Check if the current token matches any of the given types."""
-        for type in types:
-            if self.check(type):
+        for token_type in types:
+            if self.check(token_type):
                 self.advance()
                 return True
 
@@ -1039,7 +1038,7 @@ def parse_rule(rule_string):
             tokens = tokenize_expression(rule_string)
             parser = Parser(tokens)
             return parser.parse()
-        except Exception as e:
+        except (ValueError, IndexError) as e:
             raise ValueError(f"Error parsing expression '{rule_string}': {e}")
 
 
@@ -1402,7 +1401,7 @@ def generate_cdf_plot(values, attribute_name):
 
         return img_base64
 
-    except Exception as e:
+    except (ValueError, TypeError, OSError) as e:
         logger.error(f"Error generating CDF plot for {attribute_name}: {e}")
         return None
 

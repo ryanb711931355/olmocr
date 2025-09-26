@@ -2,7 +2,6 @@ import logging
 import re
 import subprocess
 from collections import Counter
-from typing import List
 
 from lingua import Language, LanguageDetectorBuilder
 from pypdf import PdfReader
@@ -189,7 +188,7 @@ if __name__ == "__main__":
                             elif result == "remove":
                                 fremove.write(s3_path + "\n")
                         except Exception as e:
-                            print(f"Error processing {s3_path}: {e}")
+                            logger.error(f"Error processing {s3_path}: {e}")
 
                         # Update the progress bar
                         pbar.update(1)

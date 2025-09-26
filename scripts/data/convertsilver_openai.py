@@ -11,9 +11,12 @@ import smart_open
 from cached_path import cached_path
 
 
+logger = logging.getLogger(__name__)
+
 def setup_logging():
     """Configure logging for the script."""
     logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s", handlers=[logging.StreamHandler(sys.stdout)])
+    logger.info("Logging configured")
 
 
 def is_s3_path(path):
@@ -41,7 +44,7 @@ def process_file(input_file: str, output_file: str, rewrite_prompt_str: bool):
                 try:
                     obj = json.loads(line)
                 except json.JSONDecodeError as e:
-                    logging.error(f"JSON decode error in file {input_file} at line {line_number}: {e}")
+                    logger.error(f"JSON decode error in file {input_file} at line {line_number}: {e}")
                     error_count += 1
                     continue
 
@@ -74,10 +77,10 @@ def process_file(input_file: str, output_file: str, rewrite_prompt_str: bool):
                 else:
                     error_count += 1
 
-        logging.info(f"Processed '{input_file}': {processed_count} records transformed, {error_count} errors.")
+        logger.info(f"Processed '{input_file}': {processed_count} records transformed, {error_count} errors.")
     except Exception as e:
-        logging.exception(e)
-        logging.error(f"Failed to process file {input_file}: {e}")
+        logger.exception(e)
+        logger.error(f"Failed to process file {input_file}: {e}")
 
 
 def construct_output_file_path(input_file_path, input_dir, output_dir):

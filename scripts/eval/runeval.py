@@ -9,7 +9,7 @@ import sys
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Optional
 
 import boto3
 import zstandard
@@ -62,9 +62,9 @@ def compute_file_hash(file_path: str) -> str:
 class NormalizedEntry:
     s3_path: str
     pagenum: int
-    text: Optional[str]
-    finish_reason: Optional[str]
-    error: Optional[str] = None
+    text: str | None
+    finish_reason: str | None
+    error: str | None = None
 
     @staticmethod
     def from_goldkey(goldkey: str, **kwargs):
@@ -184,7 +184,7 @@ def load_gold_data(gold_data_path: str, max_workers: int = 8) -> dict:
                 gold_data.update(file_gold_data)
                 total_errors += file_errors
                 total_overruns += file_overruns
-            except Exception as e:
+            except Exception:
                 print(f"Error processing a file: {e}")
 
     print(f"Loaded {len(gold_data):,} gold data entries for comparison")

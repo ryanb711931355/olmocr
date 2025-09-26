@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 import json
 import os
@@ -6,8 +5,6 @@ import shutil
 import sys
 import tempfile
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
-
 from flask import Flask, jsonify, redirect, render_template, request, send_file, url_for
 
 app = Flask(__name__)
@@ -279,7 +276,7 @@ def main():
     # Load dataset
     try:
         PDF_TESTS, ALL_PDFS = load_dataset(args.dataset_file)
-    except Exception as e:
+    except (FileNotFoundError, json.JSONDecodeError) as e:
         print(f"Error loading dataset: {str(e)}")
         return 1
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 mine_math.py - Extract and validate math equations from candidate files and TeX bases.
 
@@ -66,7 +65,7 @@ def extract_tex_content(tex_file: str) -> str:
         try:
             with open(tex_file, "r", encoding="latin-1") as f:
                 return f.read()
-        except Exception as e:
+        except OSError as e:
             logging.error("Error reading %s: %s", tex_file, e)
             return ""
 
@@ -76,7 +75,7 @@ def extract_candidate_content(candidate_file: str) -> str:
     try:
         with open(candidate_file, "r", encoding="utf-8") as f:
             return f.read()
-    except Exception as e:
+    except OSError as e:
         logging.error("Error reading %s: %s", candidate_file, e)
         return ""
 

@@ -15,7 +15,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Tuple
 from urllib.parse import urlparse
 
 import boto3
@@ -76,7 +76,7 @@ def load_jsonl_files(results_dir: Path) -> List[Path]:
     return jsonl_files
 
 
-def parse_jsonl_entry(entry: Dict) -> Optional[Dict]:
+def parse_jsonl_entry(entry: Dict) -> dict | None:
     """Parse a single JSONL entry and extract relevant information."""
     try:
         text = entry.get("text", "")
@@ -94,7 +94,7 @@ def parse_jsonl_entry(entry: Dict) -> Optional[Dict]:
             return None
 
         return {"id": entry.get("id", ""), "text": text, "source_file": source_file, "metadata": metadata, "pdf_page_numbers": pdf_page_numbers}
-    except Exception as e:
+    except (KeyError, TypeError, ValueError) as e:
         logger.error(f"Error parsing JSONL entry: {e}")
         return None
 
@@ -150,12 +150,12 @@ def extract_pdf_page(pdf_path: str, page_num: int, output_path: str) -> bool:
             writer.write(f)
 
         return True
-    except Exception as e:
+    except (FileNotFoundError, OSError) as e:
         logger.error(f"Error extracting page {page_num} from {pdf_path}: {e}")
         return False
 
 
-def process_document(entry_data: Dict, output_dir: Path, cache_dir: Path) -> Tuple[int, int]:
+def process_document(entry_data: Dict, output_dir: Path, cache_dir: Path) -> tuple[int, int]:
     """
     Process a single document: extract pages and create markdown files.
 
@@ -233,14 +233,14 @@ def process_document(entry_data: Dict, output_dir: Path, cache_dir: Path) -> Tup
                 # Remove the markdown file if PDF extraction failed
                 os.remove(md_path)
 
-        except Exception as e:
+        except (OSError, IOError) as e:
             logger.error(f"Error processing page {page_num} of document {doc_id}: {e}")
             failed += 1
 
     return successful, failed
 
 
-def process_workspace(workspace_path: str, output_dir: Path, max_examples: Optional[int] = None) -> None:
+def process_workspace(workspace_path: str, output_dir: Path, max_examples: int | None = None) -> None:
     """
     Process all JSONL files in the workspace and create training data.
 
