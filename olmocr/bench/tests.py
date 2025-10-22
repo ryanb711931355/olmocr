@@ -5,7 +5,7 @@ import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, Optional, Set, Tuple, Union
 
 import numpy as np
 from bs4 import BeautifulSoup
@@ -1035,7 +1035,7 @@ def load_single_test(data: Union[str, Dict]) -> BasePDFTest:
     return test
 
 
-def load_tests(jsonl_file: str) -> List[BasePDFTest]:
+def load_tests(jsonl_file: str) -> list[BasePDFTest]:
     """
     Load tests from a JSONL file using parallel processing with a ThreadPoolExecutor.
 
@@ -1065,9 +1065,6 @@ def load_tests(jsonl_file: str) -> List[BasePDFTest]:
         except (ValidationError, KeyError) as e:
             print(f"Error on line {line_number}: {e}")
             raise
-        except Exception as e:
-            print(f"Unexpected error on line {line_number}: {e}")
-            raise
 
     tests = []
 
@@ -1096,7 +1093,7 @@ def load_tests(jsonl_file: str) -> List[BasePDFTest]:
     return tests
 
 
-def save_tests(tests: List[BasePDFTest], jsonl_file: str) -> None:
+def save_tests(tests: list[BasePDFTest], jsonl_file: str) -> None:
     """
     Save tests to a JSONL file using asdict for conversion.
 

@@ -9,7 +9,7 @@ import os
 import random
 from asyncio import Queue, QueueEmpty
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional, Set
 
 import zstandard
 
@@ -205,7 +205,7 @@ class WorkQueue:
             # Create lock (overwrites if stale)
             try:
                 await self.backend.create_worker_lock(work_item.hash)
-            except Exception as e:
+            except OSError as e:
                 logger.warning(f"Failed to create lock for {work_item.hash}: {e}")
                 self._queue.task_done()
                 continue
@@ -257,7 +257,7 @@ class LocalBackend(Backend):
         lines = data.decode("utf-8").splitlines()
         return lines
 
-    def _upload_zstd_csv_local(self, local_path: str, lines: List[str]) -> None:
+    def _upload_zstd_csv_local(self, local_path: str, lines: list[str]) -> None:
         """
         Write a zstd-compressed CSV to a local path.
         """
@@ -269,10 +269,10 @@ class LocalBackend(Backend):
         with open(local_path, "wb") as f:
             f.write(compressed_data)
 
-    async def load_index_lines(self) -> List[str]:
+    async def load_index_lines(self) -> list[str]:
         return await asyncio.to_thread(self._download_zstd_csv_local, self._index_path)
 
-    async def save_index_lines(self, lines: List[str]) -> None:
+    async def save_index_lines(self, lines: list[str]) -> None:
         await asyncio.to_thread(self._upload_zstd_csv_local, self._index_path, lines)
 
     async def get_completed_hashes(self) -> Set[str]:

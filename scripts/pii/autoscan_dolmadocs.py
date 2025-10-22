@@ -6,7 +6,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import boto3
 import pydantic
@@ -220,7 +220,7 @@ def get_random_pages(s3_client, result_files, count=30):
                 if len(random_pages) >= count:
                     break
 
-        except Exception as e:
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
             print(f"Error processing {result_file}: {e}")
             continue
 
@@ -298,7 +298,7 @@ Only consider actual occurrences of the PII within the document shown.
 
         return completion.choices[0].message.parsed
 
-    except Exception as e:
+    except (botocore.exceptions.ClientError, json.JSONDecodeError, KeyError, TypeError) as e:
         print(f"Error analyzing page {pdf_path} (page {page_num}): {e}")
         return None
 
@@ -309,7 +309,7 @@ def create_presigned_url(s3_client, pdf_path, expiration=3600 * 24 * 7):
         bucket, key = parse_s3_path(pdf_path)
         url = s3_client.generate_presigned_url("get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=expiration)
         return url
-    except Exception as e:
+    except botocore.exceptions.ClientError as e:
         print(f"Error creating presigned URL for {pdf_path}: {e}")
         return None
 
@@ -399,7 +399,7 @@ def categorize_results(all_results):
     return categories
 
 
-def print_annotation_report(annotation_results: Dict[str, List[Dict[str, Any]]]):
+def print_annotation_report(annotation_results: Dict[str, list[Dict[str, Any]]]):
     """Print a summary report of annotations."""
     total_pages = sum(len(items) for items in annotation_results.values())
 

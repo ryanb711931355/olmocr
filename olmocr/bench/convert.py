@@ -81,7 +81,7 @@ async def process_pdf(pdf_path, page_num, method, kwargs, output_path, is_async,
 
         return True
     except Exception as ex:
-        print(f"Exception {str(ex)} occurred while processing {os.path.basename(output_path)}")
+        print(f"Exception {ex!s} occurred while processing {os.path.basename(output_path)}")
         # Write blank to this file, so that it's marked as an error and not just skipped in evals
         with open(output_path, "w") as out_f:
             out_f.write("")
@@ -99,7 +99,7 @@ async def process_pdfs(config, pdf_directory, data_directory, repeats, remove_te
     executor = ThreadPoolExecutor(max_workers=max_parallel) if use_executor else None
 
     try:
-        for candidate in config.keys():
+        for candidate in config:
             print(f"Starting conversion using {candidate} with kwargs: {config[candidate]['kwargs']}")
             folder_name = config[candidate]["folder_name"]
             candidate_output_dir = os.path.join(data_directory, folder_name)
@@ -136,21 +136,18 @@ async def process_pdfs(config, pdf_directory, data_directory, repeats, remove_te
                             base64_png = render_pdf_to_base64png(pdf_path, page_num, target_longest_image_dim=2048)
 
                             # Decode base64 and save to temporary file
-                            temp_img = tempfile.NamedTemporaryFile("wb", suffix=".png", delete=False)
-                            temp_img.write(base64.b64decode(base64_png))
-                            temp_img.close()
-                            temp_image_files.append(temp_img.name)
+                            with tempfile.NamedTemporaryFile("wb", suffix=".png", delete=False) as temp_img:
+                                temp_img.write(base64.b64decode(base64_png))
+                                temp_image_files.append(temp_img.name)
 
                         # Convert all images to a single PDF using our enhanced function
                         pdf_bytes = convert_image_to_pdf_bytes(temp_image_files)
 
                         # Write the PDF bytes to a temporary file
-                        temp_pdf = tempfile.NamedTemporaryFile("wb", suffix=".pdf", delete=False)
-                        temp_pdf.write(pdf_bytes)
-                        temp_pdf.close()
-
-                        # Update pdf_path to the new file
-                        pdf_path = temp_pdf.name
+                        with tempfile.NamedTemporaryFile("wb", suffix=".pdf", delete=False) as temp_pdf:
+                            temp_pdf.write(pdf_bytes)
+                            # Update pdf_path to the new file
+                            pdf_path = temp_pdf.name
 
                     finally:
                         # Clean up temporary image files

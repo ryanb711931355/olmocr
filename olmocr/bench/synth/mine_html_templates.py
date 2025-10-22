@@ -584,7 +584,7 @@ async def generate_html_from_image(client, image_base64):
 
     except Exception as e:
         print(f"Error calling Claude API: {e}")
-        return None
+        raise e
 
 
 def extract_page_from_pdf(input_path, output_path, page_num):
@@ -716,19 +716,19 @@ async def render_pdf_with_playwright(html_content, output_pdf_path, png_width, p
 
                 # Check if the output PDF has exactly one page
                 try:
-                    reader = pypdf.PdfReader(output_pdf_path)
+                    reader = await asyncio.to_thread(pypdf.PdfReader, output_pdf_path)
                     if len(reader.pages) == 1:
-                        print(f"Successfully rendered as a single page PDF with scale factor {scale}")
+                        print(f"Successfully rendered as a single page PDF with scale factor {scale!r}")
                         return True
                     else:
-                        print(f"PDF has {len(reader.pages)} pages with scale factor {scale}, trying a smaller scale...")
+                        print(f"PDF has {len(reader.pages)} pages with scale factor {scale!r}, trying a smaller scale...")
                         # Continue to the next scale factor
                 except Exception as pdf_check_error:
                     print(f"Error checking PDF page count: {pdf_check_error}")
                     return False
 
         except Exception as e:
-            print(f"Error rendering PDF with Playwright at scale {scale}: {str(e)}")
+            print(f"Error rendering PDF with Playwright at scale {scale!r}: {str(e)}")
             # Try the next scale factor
 
     print("Failed to render PDF as a single page with any scale factor")
@@ -1536,7 +1536,7 @@ async def main():
                 return result
         except Exception as e:
             print(f"Error processing {pdf_path}: {e}")
-            return None
+            raise e
 
     # Create tasks for all PDFs
     tasks = []
@@ -1563,7 +1563,7 @@ async def main():
         cost_input = (total_input_tokens / 1_000_000) * 3.0  # $3 per million input tokens
         cost_output = (total_output_tokens / 1_000_000) * 15.0  # $15 per million output tokens
         total_cost = cost_input + cost_output
-        pbar.set_postfix({"in_tokens": f"{total_input_tokens:,}", "out_tokens": f"{total_output_tokens:,}", "cost": f"${total_cost:.2f}"})
+        pbar.set_postfix({"in_tokens": f"{total_input_tokens!s:,}", "out_tokens": f"{total_output_tokens!s:,}", "cost": f"${total_cost:.2f}"})
 
     print(f"Generated {len(results)} HTML templates")
 

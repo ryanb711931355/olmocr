@@ -3,8 +3,8 @@ import glob
 import json
 import os
 import random
+from collections.abc import Generator
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Generator
 from urllib.parse import urlparse
 
 import boto3
@@ -188,9 +188,6 @@ def main():
 
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
-
-    # Open the first file for writing
-    cur_file = open(cur_file_path, "w")
 
     # Counter to track PDFs that produce at least one output
     pdfs_with_output = 0

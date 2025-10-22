@@ -235,7 +235,7 @@ async def apost(url, json_data, api_key=None):
         return status_code, response_body
     except Exception as e:
         # Pass through errors
-        raise e
+        raise e from e
     finally:
         # But just make sure to close the socket on your way out
         if writer is not None:
@@ -531,7 +531,7 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
             for task in dolma_tasks:
                 try:
                     result = task.result()
-                except:
+                except Exception:
                     # some dolma doc creations may have failed
                     pass
 
@@ -664,7 +664,7 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
     def _kill_proc():
         try:
             proc.terminate()
-        except:
+        except Exception:
             logger.info("VLLM Process already terminated")
 
     atexit.register(_kill_proc)
@@ -794,8 +794,8 @@ async def vllm_server_ready(args):
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
-            logger.warning(f"Attempt {attempt}: Please wait for vllm server to become ready...")
+        except Exception as e:
+            logger.warning(f"Attempt {attempt}: Please wait for vllm server to become ready... {e}")
 
         await asyncio.sleep(delay_sec)
 
@@ -820,7 +820,7 @@ async def download_model(model_name_or_path: str, max_retries: int = 5):
                 logger.info(f"Downloading model with hugging face '{model_name_or_path}'")
                 snapshot_download(repo_id=model_name_or_path)
                 return model_name_or_path
-        except Exception:
+        except Exception as e:
             if retry == max_retries - 1:
                 raise  # Raise on final attempt and fail the job
 
