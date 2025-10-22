@@ -233,17 +233,14 @@ async def apost(url, json_data, api_key=None):
             raise ConnectionError("Cannot determine response body length")
 
         return status_code, response_body
-    except Exception as e:
-        # Pass through errors
-        raise e
     finally:
         # But just make sure to close the socket on your way out
         if writer is not None:
             try:
                 writer.close()
                 await writer.wait_closed()
-            except:
-                pass
+            except OSError as ex:
+                logger.debug(f"Error while closing connection to {host}:{port}: {ex}")
 
 
 async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path: str, page_num: int) -> PageResult:
@@ -332,7 +329,7 @@ async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path:
                 output_tokens=base_response_data["usage"].get("completion_tokens", 0),
                 is_fallback=False,
             )
-        except (ConnectionError, OSError, asyncio.TimeoutError) as e:
+        except (ConnectionError, OSError, TimeoutError) as e:
             logger.warning(f"Client error on attempt {attempt} for {pdf_orig_path}-{page_num}: {type(e)} {e}")
 
             # Now we want to do exponential backoff, and not count this as an actual page retry
@@ -352,8 +349,8 @@ async def process_page(args, worker_id: int, pdf_orig_path: str, pdf_local_path:
         except ValueError as e:
             logger.warning(f"ValueError on attempt {attempt} for {pdf_orig_path}-{page_num}: {type(e)} - {e}")
             attempt += 1
-        except Exception as e:
-            logger.exception(f"Unexpected error on attempt {attempt} for {pdf_orig_path}-{page_num}: {type(e)} - {e}")
+        except Exception:
+            logger.exception(f"Unexpected error on attempt {attempt} for {pdf_orig_path}-{page_num}")
             attempt += 1
 
     logger.error(f"Failed to process {pdf_orig_path}-{page_num} after {MAX_RETRIES} attempts.")
@@ -444,7 +441,7 @@ async def process_pdf(args, worker_id: int, pdf_orig_path: str):
                     logger.critical("Encountered BrokenProcessPool, exiting process.")
                     sys.exit(1)
 
-            logger.exception(f"Exception in process_pdf for {pdf_orig_path}: {e}")
+            logger.exception(f"Exception in process_pdf for {pdf_orig_path}")
             # You can't build a dolma doc with even 1 failed page, so just get out of here
             # However, you don't want to propagate an exception higher up and cancel the entire work_group
             return None
@@ -490,8 +487,8 @@ def build_dolma_document(pdf_orig_path, page_results):
         "id": id_,
         "text": document_text,
         "source": "olmocr",
-        "added": datetime.datetime.now().strftime("%Y-%m-%d"),
-        "created": datetime.datetime.now().strftime("%Y-%m-%d"),
+        "added": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d"),
+        "created": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%d"),
         "metadata": metadata,
         "attributes": {
             "pdf_page_numbers": pdf_page_spans,
@@ -529,11 +526,12 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
 
             dolma_docs = []
             for task in dolma_tasks:
+                result = None
                 try:
                     result = task.result()
-                except:
+                except Exception:
                     # some dolma doc creations may have failed
-                    pass
+                    logger.exception(f"Dolma doc creation failed for {work_item.hash}")
 
                 if result is not None:
                     dolma_docs.append(result)
@@ -607,7 +605,7 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
                     else:
                         # For local paths, create the directory structure and write the file
                         os.makedirs(markdown_dir, exist_ok=True)
-                        with open(markdown_path, "w") as md_f:
+                        with open(markdown_path, "w") as md_f:  # noqa: ASYNC230
                             md_f.write(natural_text)
 
             # Update finished token counts from successful documents
@@ -617,8 +615,8 @@ async def worker(args, work_queue: WorkQueue, semaphore, worker_id):
             )
 
             await work_queue.mark_done(work_item)
-        except Exception as e:
-            logger.exception(f"Exception occurred while processing work_hash {work_item.hash}: {e}")
+        except Exception:
+            logger.exception(f"Exception occurred while processing work_hash {work_item.hash}")
         finally:
             semaphore.release()
 
@@ -664,7 +662,7 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
     def _kill_proc():
         try:
             proc.terminate()
-        except:
+        except ProcessLookupError:
             logger.info("VLLM Process already terminated")
 
     atexit.register(_kill_proc)
@@ -711,7 +709,7 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
             try:
                 line = line.decode("utf-8").rstrip()
                 await process_line(line)
-            except Exception as ex:
+            except Exception as ex:  # noqa: BLE001
                 logger.warning(f"Got {ex} when reading log line from inference server, skipping")
 
     async def timeout_task():
@@ -749,7 +747,7 @@ async def vllm_server_task(model_name_or_path, args, semaphore, unknown_args=Non
         proc.terminate()
         try:
             await asyncio.wait_for(proc.wait(), timeout=10.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("VLLM server did not terminate within 10 seconds")
         raise
 
@@ -794,18 +792,18 @@ async def vllm_server_ready(args):
                     return
                 else:
                     logger.info(f"Attempt {attempt}: Unexpected status code {response.status_code}")
-        except Exception:
+        except (httpx.HTTPError, OSError):
             logger.warning(f"Attempt {attempt}: Please wait for vllm server to become ready...")
 
         await asyncio.sleep(delay_sec)
 
-    raise Exception("vllm server did not become ready after waiting.")
+    raise TimeoutError("vllm server did not become ready after waiting.")
 
 
 async def download_model(model_name_or_path: str, max_retries: int = 5):
     for retry in range(max_retries):
         try:
-            if model_name_or_path.startswith("s3://") or model_name_or_path.startswith("gs://") or model_name_or_path.startswith("weka://"):
+            if model_name_or_path.startswith(("s3://", "gs://", "weka://")):
                 logger.info(f"Downloading model directory from '{model_name_or_path}'")
                 model_cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "olmocr", "model")
                 # Delete existing model cache directory if it exists
@@ -881,9 +879,11 @@ def submit_beaker_job(args):
 
         b.secret.write(f"{owner}-WEKA_ACCESS_KEY_ID", os.environ.get("WEKA_ACCESS_KEY_ID", ""), args.beaker_workspace)
         b.secret.write(f"{owner}-WEKA_SECRET_ACCESS_KEY", os.environ.get("WEKA_SECRET_ACCESS_KEY", ""), args.beaker_workspace)
+        with open(os.path.join(os.path.expanduser("~"), ".aws", "credentials")) as aws_cred_file:
+            aws_credentials = aws_cred_file.read()
         b.secret.write(
             f"{owner}-AWS_CREDENTIALS_FILE",
-            open(os.path.join(os.path.expanduser("~"), ".aws", "credentials")).read(),
+            aws_credentials,
             args.beaker_workspace,
         )
 
@@ -1011,7 +1011,7 @@ def print_stats(args, root_work_queue):
                 long_context_docs,
                 long_context_tokens,
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning(f"Error processing {s3_path}: {e}")
             return 0, 0, 0, 0, 0, set(), 0, 0
 
@@ -1151,11 +1151,11 @@ async def main():
     if "BEAKER_JOB_NAME" in os.environ:
         cred_path = os.path.join(os.path.expanduser("~"), ".aws", "credentials")
         os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-        with open(cred_path, "w") as f:
+        with open(cred_path, "w") as f:  # noqa: ASYNC230
             f.write(os.environ.get("AWS_CREDENTIALS_FILE"))
         cred_path = os.path.join(os.path.expanduser("~"), ".gcs", "credentials")
         os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-        with open(cred_path, "w") as f:
+        with open(cred_path, "w") as f:  # noqa: ASYNC230
             f.write(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_FILE"))
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = cred_path
         workspace_s3 = boto3.client("s3")
@@ -1206,7 +1206,9 @@ async def main():
                     or pdf_path.lower().endswith(".jpg")
                     or pdf_path.lower().endswith(".jpeg")
                 ):
-                    if open(pdf_path, "rb").read(4) == b"%PDF":
+                    with open(pdf_path, "rb") as fh:  # noqa: ASYNC230
+                        header = fh.read(4)
+                    if header == b"%PDF":
                         logger.info(f"Loading file at {pdf_path} as PDF document")
                         pdf_work_paths.add(pdf_path)
                     elif is_png(pdf_path) or is_jpeg(pdf_path):
@@ -1216,7 +1218,7 @@ async def main():
                         logger.warning(f"File at {pdf_path} is not a valid PDF")
                 elif pdf_path.lower().endswith(".txt"):
                     logger.info(f"Loading file at {pdf_path} as list of paths")
-                    with open(pdf_path, "r") as f:
+                    with open(pdf_path, "r") as f:  # noqa: ASYNC230
                         pdf_work_paths |= set(filter(None, (line.strip() for line in f)))
                 else:
                     raise ValueError(f"Unsupported file extension for {pdf_path}")
@@ -1241,7 +1243,7 @@ async def main():
                     else:
                         reader = PdfReader(tmp_file.name)
                         page_counts.append(len(reader.pages))
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(f"Failed to read {pdf}: {e}")
 
         if page_counts:

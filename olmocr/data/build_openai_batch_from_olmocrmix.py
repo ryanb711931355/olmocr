@@ -8,9 +8,11 @@ and generates OpenAI batch API requests for processing PDFs.
 
 import argparse
 import json
+import sys
+from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional, Tuple
+from typing import Any
 
 from pypdf import PdfReader
 from tqdm import tqdm
@@ -41,7 +43,7 @@ def validate_single_page_pdf(pdf_path: Path) -> bool:
     try:
         pdf = PdfReader(pdf_path)
         return len(pdf.pages) == 1
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Error reading PDF {pdf_path}: {e}")
         return False
 
@@ -67,7 +69,7 @@ def build_custom_id(pdf_path: Path, base_dir: Path) -> str:
     return path_without_ext
 
 
-def process_single_pdf(pdf_path: Path, base_dir: Path) -> Optional[Tuple[Dict[str, Any], Path]]:
+def process_single_pdf(pdf_path: Path, base_dir: Path) -> tuple[dict[str, Any], Path] | None:
     """
     Process a single PDF and return the batch request if valid.
 
@@ -83,7 +85,7 @@ def process_single_pdf(pdf_path: Path, base_dir: Path) -> Optional[Tuple[Dict[st
         pdf = PdfReader(pdf_path)
         if len(pdf.pages) != 1:
             return None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Error reading PDF {pdf_path}: {e}")
         return None
 
@@ -123,7 +125,7 @@ def process_single_pdf(pdf_path: Path, base_dir: Path) -> Optional[Tuple[Dict[st
         }
 
         return (request, pdf_path)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Error processing {pdf_path}: {e}")
         return None
 
@@ -150,11 +152,10 @@ def find_pdf_files(input_dir: Path) -> Generator[Path, None, None]:
         Path objects for each PDF file found
     """
 
-    for pdf_path in input_dir.rglob("*.pdf"):
-        yield pdf_path
+    yield from input_dir.rglob("*.pdf")
 
 
-def process_pdfs_to_batch_requests(input_dir: Path, output_dir: Path, max_pdfs: int = None, num_workers: int = 8) -> int:
+def process_pdfs_to_batch_requests(input_dir: Path, output_dir: Path, max_pdfs: int | None = None, num_workers: int = 8) -> int:
     """
     Process PDFs and create batch request files using parallel processing.
 
@@ -174,7 +175,7 @@ def process_pdfs_to_batch_requests(input_dir: Path, output_dir: Path, max_pdfs: 
     file_num = 0
     current_file_size = 0
     current_file_path = output_dir / f"batch_requests_{file_num:04d}.jsonl"
-    current_file = open(current_file_path, "w")
+    current_file = open(current_file_path, "w")  # noqa: SIM115
 
     pdfs_processed = 0
     pdfs_skipped = 0
@@ -217,7 +218,7 @@ def process_pdfs_to_batch_requests(input_dir: Path, output_dir: Path, max_pdfs: 
                             current_file.close()
                             file_num += 1
                             current_file_path = output_dir / f"batch_requests_{file_num:04d}.jsonl"
-                            current_file = open(current_file_path, "w")
+                            current_file = open(current_file_path, "w")  # noqa: SIM115
                             current_file_size = 0
                             print(f"\nStarting new batch file: {current_file_path.name}")
 
@@ -228,7 +229,7 @@ def process_pdfs_to_batch_requests(input_dir: Path, output_dir: Path, max_pdfs: 
 
                         pdfs_processed += 1
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     print(f"\nError with {pdf_path}: {e}")
                     pdfs_skipped += 1
 
@@ -282,4 +283,4 @@ def main():
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())

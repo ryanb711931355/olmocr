@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from olmocr.version import VERSION
@@ -27,7 +27,7 @@ def main():
     lines.insert(insert_index, "\n")
     lines.insert(
         insert_index + 1,
-        f"## [v{VERSION}](https://github.com/allenai/olmocr/releases/tag/v{VERSION}) - " f"{datetime.now().strftime('%Y-%m-%d')}\n",
+        f"## [v{VERSION}](https://github.com/allenai/olmocr/releases/tag/v{VERSION}) - " f"{datetime.now(timezone.utc).strftime('%Y-%m-%d')}\n",
     )
 
     with changelog.open("w") as f:

@@ -5,6 +5,7 @@ import logging
 import multiprocessing
 import re
 import shutil
+import sys
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, fields, replace
@@ -14,11 +15,6 @@ from os import PathLike
 from pathlib import Path
 from typing import (
     Any,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    Type,
     TypeAlias,
     Union,
     get_args,
@@ -41,13 +37,13 @@ from olmocr.prompts.prompts import (
 )
 
 # Type alias for samples
-Sample: TypeAlias = Dict[str, Any]
+Sample: TypeAlias = dict[str, Any]
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 
-def validate_pdf_pair(md_path: Path) -> Tuple[Optional[Dict[str, Path]], Optional[Tuple[Path, str]]]:
+def validate_pdf_pair(md_path: Path) -> tuple[dict[str, Path] | None, tuple[Path, str] | None]:
     """Validate a single markdown-PDF pair.
 
     Args:
@@ -83,8 +79,8 @@ def validate_pdf_pair(md_path: Path) -> Tuple[Optional[Dict[str, Path]], Optiona
 
                 return {"markdown_path": md_path, "pdf_path": pdf_path}, None
 
-            except Exception as e:
-                return None, (pdf_path, f"Failed to load: {str(e)}")
+            except Exception as e:  # noqa: BLE001
+                return None, (pdf_path, f"Failed to load: {e!s}")
 
     return None, None
 
@@ -94,7 +90,7 @@ class PipelineStep(ABC):
     """Abstract base class for pipeline steps."""
 
     @abstractmethod
-    def __call__(self, sample: Sample) -> Optional[Sample]:
+    def __call__(self, sample: Sample) -> Sample | None:
         """Process a sample and return the modified sample, or None to skip this sample."""
         ...
 
@@ -102,7 +98,7 @@ class PipelineStep(ABC):
 class BaseMarkdownPDFDataset(Dataset):
     """Base dataset class that loads and verifies markdown-PDF pairs."""
 
-    def __init__(self, root_dir: str | PathLike, pipeline_steps: Optional[List[PipelineStep]] = None):
+    def __init__(self, root_dir: str | PathLike, pipeline_steps: list[PipelineStep] | None = None):
         """
         Initialize the dataset by finding all markdown files with corresponding PDFs.
 
@@ -142,9 +138,9 @@ class BaseMarkdownPDFDataset(Dataset):
                         elif invalid_pdf_info:
                             invalid_pdfs.append(invalid_pdf_info)
 
-                    except Exception as e:
-                        logger.error(f"Error processing {md_path}: {str(e)}")
-                        invalid_pdfs.append((md_path.with_suffix(".pdf"), f"Processing error: {str(e)}"))
+                    except Exception as e:  # noqa: BLE001
+                        logger.error(f"Error processing {md_path}: {e!s}")
+                        invalid_pdfs.append((md_path.with_suffix(".pdf"), f"Processing error: {e!s}"))
 
                     pbar.update(1)
 
@@ -163,7 +159,7 @@ class BaseMarkdownPDFDataset(Dataset):
     def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx: int) -> Optional[Dict[str, Any]]:
+    def __getitem__(self, idx: int) -> dict[str, Any] | None:
         """
         Get a single sample from the dataset.
 
@@ -191,15 +187,15 @@ class BaseMarkdownPDFDataset(Dataset):
 class FrontMatterParser(PipelineStep):
     """Pipeline step that parses YAML front matter from markdown content."""
 
-    front_matter_class: Optional[Type] = None
+    front_matter_class: type | None = None
 
-    def _is_optional_str(self, field_type: Type) -> bool:
+    def _is_optional_str(self, field_type: type) -> bool:
         """Check if a type is Optional[str]."""
         origin = get_origin(field_type)
         args = get_args(field_type)
         return origin is Union and type(None) in args and str in args
 
-    def _extract_front_matter_and_text(self, markdown_content: str) -> tuple[Dict[str, Any], str]:
+    def _extract_front_matter_and_text(self, markdown_content: str) -> tuple[dict[str, Any], str]:
         """Extract YAML front matter and text from markdown content."""
         if markdown_content.startswith("---\n"):
             try:
@@ -217,7 +213,7 @@ class FrontMatterParser(PipelineStep):
 
         return {}, markdown_content.strip()
 
-    def _parse_front_matter(self, front_matter_dict: Dict[str, Any], text: str) -> Any:
+    def _parse_front_matter(self, front_matter_dict: dict[str, Any], text: str) -> Any:
         """Parse front matter dictionary into dataclass instance if front_matter_class is specified."""
         if not self.front_matter_class:
             return front_matter_dict
@@ -277,7 +273,7 @@ class FrontMatterParser(PipelineStep):
         try:
             page_data = self._parse_front_matter(front_matter, text)
         except Exception as e:
-            raise ValueError(f"Error parsing front matter for {sample['markdown_path']}: {e}")
+            raise ValueError(f"Error parsing front matter for {sample['markdown_path']}: {e}") from e
 
         # Only add page_data field
         sample["page_data"] = page_data
@@ -442,7 +438,7 @@ class RotationAugmentation(PipelineStep):
 
     probability: float = 0.5  # Probability of applying rotation
 
-    def __call__(self, sample: Sample) -> Optional[Sample]:
+    def __call__(self, sample: Sample) -> Sample | None:
         """Randomly rotate image and update rotation metadata."""
         # Only proceed with given probability
         if np.random.random() > self.probability:
@@ -501,7 +497,7 @@ class RotationAugmentation(PipelineStep):
 class FilterOutRotatedDocuments(PipelineStep):
     """Pipeline step that filters out documents with rotation issues."""
 
-    def __call__(self, sample: Sample) -> Optional[Sample]:
+    def __call__(self, sample: Sample) -> Sample | None:
         """Filter out samples where rotation is invalid or rotation correction is needed."""
         # Check if page_data exists
         if "page_data" not in sample:
@@ -767,12 +763,12 @@ class DatasetTextRuleFilter(PipelineStep):
                 # Check if there was an error
                 if rendered is None or (hasattr(rendered, "error") and rendered.error):
                     # Equation failed to render
-                    logger.warning(f"Could not render equation '{repr(equation)}', skipping sample")
+                    logger.warning(f"Could not render equation '{equation!r}', skipping sample")
                     return False
 
             # All equations rendered successfully
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             # If any unexpected error occurs during validation, be conservative and filter out
             print(f"Error validating math equations: {e}")
             return False
@@ -884,13 +880,13 @@ class DatasetTextRuleFilter(PipelineStep):
                     return False  # Unclosed tags
                 if not parser.is_valid:
                     return False  # Parser found an error
-            except Exception:
+            except Exception:  # noqa: BLE001
                 # Any parsing exception means the table is malformed
                 return False
 
         return True
 
-    def __call__(self, sample: Sample) -> Optional[Sample]:
+    def __call__(self, sample: Sample) -> Sample | None:
         """Filter samples based on text content rules."""
         # Get the natural text from page_data if it exists
         text = None
@@ -945,7 +941,7 @@ class ReformatLatexBoldItalic(PipelineStep):
     These conversions only happen outside of math equations.
     """
 
-    def __call__(self, sample: Sample) -> Optional[Sample]:
+    def __call__(self, sample: Sample) -> Sample | None:
         """Convert LaTeX formatting to markdown in the sample text."""
         # Get the natural text from page_data if it exists
         if "page_data" not in sample:
@@ -1042,7 +1038,7 @@ class AugraphyBasicAugmentations(PipelineStep):
 
     probability: float = 0.5  # Overall probability of applying any augmentation
 
-    def __call__(self, sample: Sample) -> Optional[Sample]:
+    def __call__(self, sample: Sample) -> Sample | None:
         """Apply augraphy augmentations to the image in the sample."""
         # Check that the image data exists
         if "image" not in sample:
@@ -1245,7 +1241,7 @@ class Tokenizer(PipelineStep):
 class RandomTokenFlipper(PipelineStep):
     """Randomly flips tokens in the output (non-masked) portion and masks their labels."""
 
-    valid_token_ids: List[int]  # List of valid token IDs to substitute with
+    valid_token_ids: list[int]  # List of valid token IDs to substitute with
     token_flip_rate: float = 1e-4
     masking_index: int = -100
 
@@ -1374,7 +1370,7 @@ if __name__ == "__main__":
         config.validate()
     except ValueError as e:
         print(f"Configuration validation failed: {e}")
-        exit(1)
+        sys.exit(1)
 
     # Load processor for tokenization
     print(f"\nLoading processor: {config.model.name}")
@@ -1392,7 +1388,7 @@ if __name__ == "__main__":
 
     if args.dataset_index >= len(dataset_configs):
         print(f"Error: Dataset index {args.dataset_index} out of range. Only {len(dataset_configs)} {dataset_name} datasets available.")
-        exit(1)
+        sys.exit(1)
 
     dataset_cfg = dataset_configs[args.dataset_index]
     root_dir = dataset_cfg["root_dir"]
@@ -1464,7 +1460,7 @@ if __name__ == "__main__":
 
                     return {"index": idx, "markdown_path": str(md_path), "pdf_path": str(pdf_path)}
                 return None
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"Error processing sample {idx}: {e}")
                 return None
 
@@ -1499,7 +1495,7 @@ if __name__ == "__main__":
 
         # Exit early if --save-filtered is used (don't continue with other analyses)
         print("\nCompleted saving filtered samples. Exiting.")
-        exit(0)
+        sys.exit(0)
 
     if len(dataset) > 0:
         # Show first few samples
@@ -1520,7 +1516,7 @@ if __name__ == "__main__":
 
             if len(matching_indices) == 0:
                 print(f"\nError: No samples found containing '{args.sample_md}' in markdown path.")
-                exit(1)
+                sys.exit(1)
             elif len(matching_indices) > 1:
                 print(f"\nError: Multiple samples found containing '{args.sample_md}':")
                 for idx in matching_indices[:10]:  # Show first 10 matches
@@ -1528,7 +1524,7 @@ if __name__ == "__main__":
                 if len(matching_indices) > 10:
                     print(f"  ... and {len(matching_indices) - 10} more")
                 print("\nPlease use a more specific substring.")
-                exit(1)
+                sys.exit(1)
             else:
                 sample_idx = matching_indices[0]
                 print(f"\nFound sample at index {sample_idx}: {dataset.samples[sample_idx]['markdown_path']}")
@@ -1536,7 +1532,7 @@ if __name__ == "__main__":
         # Check if sample index is valid
         if sample_idx >= len(dataset):
             print(f"\nError: Sample index {sample_idx} out of range. Only {len(dataset)} samples available.")
-            exit(1)
+            sys.exit(1)
 
         # Get the requested sample
         print(f"\n=== Displaying sample {sample_idx} ===")
@@ -1620,7 +1616,7 @@ if __name__ == "__main__":
                 elif label != -100 and i > 0 and labels[i - 1] == -100:
                     marker = " <-- response begins"
 
-                print(f"[{i:4d}] {token_repr:20s} | {str(label):6s} | {token_id:6d}{marker}")
+                print(f"[{i:4d}] {token_repr:20s} | {label!s:6s} | {token_id:6d}{marker}")
 
             # Calculate and show token statistics after the table
             print(f"\nToken statistics:")
@@ -1660,7 +1656,7 @@ if __name__ == "__main__":
                         total_length = len(labels)
                         return (idx, total_length, None)
                     return (idx, None, "No labels in sample")
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     return (idx, None, str(e))
 
             # Process samples in parallel with progress bar
@@ -1691,7 +1687,7 @@ if __name__ == "__main__":
                                 if sequence_length > max_sequence_length:
                                     max_sequence_length = sequence_length
                                     max_sequence_sample_idx = idx
-                        except Exception as e:
+                        except Exception as e:  # noqa: BLE001
                             errors.append((idx, f"Future error: {e}"))
                         pbar.update(1)
 

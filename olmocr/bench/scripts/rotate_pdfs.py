@@ -44,8 +44,7 @@ def main():
     print(f"Writing selected entries to {output_jsonl}")
     with open(output_jsonl, "w") as f:
         for pdf_name in selected_pdfs:
-            for entry in pdf_groups[pdf_name]:
-                f.write(json.dumps(entry) + "\n")
+            f.writelines(json.dumps(entry) + "\n" for entry in pdf_groups[pdf_name])
 
     # Copy corresponding PDF files
     print("Copying PDF files to rotated directory...")

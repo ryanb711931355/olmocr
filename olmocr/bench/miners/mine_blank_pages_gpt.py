@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 mine_blank_pages_gpt.py - Identify PDF documents with blank pages and copy them.
 
@@ -61,12 +60,12 @@ def download_pdf_from_s3(s3_path: str, local_path: str) -> bool:
         # Download file
         s3.download_file(bucket, key, local_path)
         return True
-    except Exception as e:
-        print(f"Error downloading {s3_path}: {str(e)}")
+    except Exception as e:  # noqa: BLE001
+        print(f"Error downloading {s3_path}: {e!s}")
         return False
 
 
-def check_blank_page(pdf_path: str, page_num: int, api_key: str) -> Optional[bool]:
+def check_blank_page(pdf_path: str, page_num: int, api_key: str) -> bool | None:
     """
     Use GPT-4o with the exact same query as buildsilver.py to check if a page has null natural_text.
 
@@ -124,8 +123,8 @@ def check_blank_page(pdf_path: str, page_num: int, api_key: str) -> Optional[boo
 
         return is_blank
 
-    except Exception as e:
-        print(f"Error checking {pdf_path} page {page_num}: {str(e)}")
+    except Exception as e:  # noqa: BLE001
+        print(f"Error checking {pdf_path} page {page_num}: {e!s}")
         return None
 
 
@@ -193,8 +192,8 @@ def process_pdf(s3_path: str, temp_dir: str, output_dir: str, api_key: str) -> b
 
         return False
 
-    except Exception as e:
-        print(f"Error processing {pdf_filename}: {str(e)}")
+    except Exception as e:  # noqa: BLE001
+        print(f"Error processing {pdf_filename}: {e!s}")
         return False
     finally:
         if os.path.exists(local_pdf_path):
@@ -279,8 +278,8 @@ def main():
                                 for f in futures:
                                     f.cancel()
                                 break
-                    except Exception as e:
-                        print(f"Error in parallel processing: {str(e)}")
+                    except Exception as e:  # noqa: BLE001
+                        print(f"Error in parallel processing: {e!s}")
     else:
         # Sequential processing
         for s3_path in tqdm(pdf_paths, desc="Processing PDFs"):
